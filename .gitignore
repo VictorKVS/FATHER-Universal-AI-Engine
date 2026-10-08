@@ -1,0 +1,40 @@
+# Credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+**/secrets/**
+**/credentials/**
+# Sensitive local data/artifacts
+RUNS/
+FINAL/
+**/RUNS/**
+**/FINAL/**
+runtime-data/
+data/
+datasets/private/
+backups/
+*.bak
+*.backup
+*.before-*.bak
+*.log
+# Model weights
+*.gguf
+*.safetensors
+*.ckpt
+*.pt
+*.pth
+*.onnx
+# Local builds/cache
+node_modules/
+dist/
+coverage/
+.cache/
+__pycache__/
+.pytest_cache/
+*.pyc
+.DS_Store
+Thumbs.db
