@@ -131,7 +131,8 @@ PASS only if:
 - PD-009 AUTHORITY_AND_ACTION_MATRIX
 - PD-010 INITIAL_RISK_REGISTER
 - PD-011 SECURITY_CONSTRAINTS
-       └── SECURITY_COST_IMPACT, including SECURITY_COST_IMPACT
+       └── SECURITY_COST_IMPACT
+PD-011A SECURITY_COMPLIANCE_BUDGET_ENVELOPE, including SECURITY_COST_IMPACT
 
 ### Gate
 `GATE-PD02-SECURITY`
@@ -145,7 +146,8 @@ PASS only if:
 - material security cost drivers are visible;
 - one-time vs recurring security burden is distinguished;
 - estimates include assumptions/confidence instead of false precision;
-- Product Manager receives a feature-level KEEP / REDESIGN / DEFER / DROP recommendation where security burden materially changes product viability.
+- Product Manager receives a feature-level KEEP / REDESIGN / DEFER / DROP recommendation where security burden materially changes product viability;
+- mandatory domain services/external systems are budgeted when triggered by product activity.
 
 ---
 
