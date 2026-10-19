@@ -493,3 +493,47 @@ Recommended fields:
 - product_recommendation.
 
 The purpose is to prevent a technically attractive idea from moving forward while its security/compliance tail makes it economically irrational.
+
+
+---
+
+# Prototype rule: Security Placeholder First
+
+For early prototype/design work, upstream roles MUST NOT invent security controls, regulatory applicability, licensed products or prices.
+
+Use explicit placeholders:
+
+```text
+SECURITY_INPUT_REQUIRED: true
+SECURITY_STATUS: TBD_BY_SECURITY
+LEGAL_APPLICABILITY: TBD_BY_SECURITY_AND_COMPLIANCE
+MANDATORY_CONTROLS: TBD_BY_SECURITY
+MANDATORY_LICENSES: TBD_BY_SECURITY
+MANDATORY_DOMAIN_SYSTEMS: TBD_BY_SECURITY_AND_DOMAIN
+SECURITY_COST: TBD_BY_SECURITY
+COMPLIANCE_COST: TBD_BY_SECURITY_AND_COMPLIANCE
+```
+
+The intended refinement flow is:
+
+```text
+IDEA / PRODUCT
+      ↓
+"WHAT SECURITY SAYS" PLACEHOLDER
+      ↓
+INFORMATION SECURITY ANALYST
+      ↓
+ALINA SOURCE/NORMATIVE ENRICHMENT
+      ↓
+APPLICABILITY
+      ↓
+REQUIRED CONTROLS / SYSTEMS / LICENSES
+      ↓
+COST / TIME / OPERATIONS IMPACT
+      ↓
+KEEP / REDESIGN / DEFER / DROP
+```
+
+ALINA must not invent applicability or cost. She enriches the Information Security decision with exact source documents, versions, clauses, applicability reasoning, implementation candidates and evidence-backed price/cost inputs where available.
+
+This keeps the prototype fast while preserving the mandatory Security gate.
