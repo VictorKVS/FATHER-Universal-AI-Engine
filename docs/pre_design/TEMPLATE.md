@@ -30,14 +30,34 @@
 
 ## 10. Security / Legal constraints
 
-## 11. Evidence / Sources
+## 11. Cost / Complexity Impact
 
-## 12. Traceability
+For security/compliance-relevant artifacts, state:
+
+- triggering feature / requirement:
+- mandatory vs optional:
+- one-time cost range:
+- recurring cost range:
+- licenses/subscriptions:
+- infrastructure impact:
+- personnel/operations impact:
+- audit/certification/assessment impact:
+- delivery schedule impact:
+- assumptions:
+- confidence:
+- cheaper alternative:
+- recommendation: KEEP / REDESIGN / DEFER / DROP
+
+Do not invent exact prices when architecture/vendor/source evidence is not yet available.
+
+## 12. Evidence / Sources
+
+## 13. Traceability
 
 | Upstream ID | This artifact item | Downstream target |
 |---|---|---|
 
-## 13. Review checklist
+## 14. Review checklist
 
 - [ ] Required inputs present
 - [ ] Unknowns marked explicitly
@@ -46,8 +66,12 @@
 - [ ] Legal/compliance applicability preserved
 - [ ] Outputs are usable by next owner
 - [ ] Traceability links present
+- [ ] Material security/compliance cost drivers are visible
+- [ ] One-time and recurring burden are separated
+- [ ] Cost assumptions/confidence are explicit
+- [ ] Expensive features have KEEP / REDESIGN / DEFER / DROP recommendation
 
-## 14. Gate decision
+## 15. Gate decision
 
 `PASS / FAIL / RETURN / HOLD`
 
