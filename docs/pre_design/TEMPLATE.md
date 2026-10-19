@@ -30,6 +30,20 @@
 
 ## 10. Security / Legal constraints
 
+For prototype-stage artifacts use:
+
+```text
+SECURITY_STATUS: TBD_BY_SECURITY
+LEGAL_APPLICABILITY: TBD_BY_SECURITY_AND_COMPLIANCE
+MANDATORY_CONTROLS: TBD_BY_SECURITY
+MANDATORY_LICENSES: TBD_BY_SECURITY
+MANDATORY_DOMAIN_SYSTEMS: TBD_BY_SECURITY_AND_DOMAIN
+SECURITY_COST: TBD_BY_SECURITY
+COMPLIANCE_COST: TBD_BY_SECURITY_AND_COMPLIANCE
+```
+
+Do not invent measures, product licenses, applicability or exact cost before the Security/Compliance stage.
+
 ## 11. Cost / Complexity Impact
 
 For security/compliance-relevant artifacts, state:
