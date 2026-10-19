@@ -37,6 +37,14 @@
       "must_precede": [
         "PD-04",
         "PD-05"
+      ],
+      "required_cost_outputs": [
+        "security_cost_impact",
+        "one_time_security_cost_range",
+        "recurring_security_cost_range",
+        "schedule_impact",
+        "operations_impact",
+        "product_recommendation_keep_redesign_defer_drop"
       ]
     },
     {
@@ -47,6 +55,13 @@
         "PD-012",
         "PD-013",
         "PD-014"
+      ],
+      "required_cost_outputs": [
+        "license_compliance_cost_impact",
+        "one_time_compliance_cost_range",
+        "recurring_license_or_assessment_cost_range",
+        "schedule_impact",
+        "product_recommendation_keep_redesign_defer_drop"
       ]
     },
     {
@@ -110,5 +125,26 @@
     "RETURN_TO_REQUIREMENTS",
     "HOLD",
     "CANCEL"
-  ]
+  ],
+  "cost_feedback_policy": {
+    "exact_price_without_evidence": "FORBIDDEN",
+    "early_estimate": "RANGE_OR_BAND_WITH_ASSUMPTIONS_AND_CONFIDENCE",
+    "required_dimensions": [
+      "one_time",
+      "recurring",
+      "licenses_subscriptions",
+      "infrastructure",
+      "integration",
+      "personnel_operations",
+      "audit_certification_assessment",
+      "evidence_retention",
+      "schedule"
+    ],
+    "decisions": [
+      "KEEP",
+      "REDESIGN",
+      "DEFER",
+      "DROP"
+    ]
+  }
 }
