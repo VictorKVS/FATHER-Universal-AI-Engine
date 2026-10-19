@@ -118,7 +118,12 @@ PASS only if:
 10. identify credential/secrets risks;
 11. identify third-party/integration risks;
 12. identify preliminary threat/risk hypotheses;
-13. identify security questions that BA/SA must respect.
+13. identify security questions that BA/SA must respect;
+14. estimate the security implementation burden for each material product feature;
+15. identify expected security licenses/subscriptions/certified products/services where they are likely to be required;
+16. estimate one-time and recurring security cost ranges with assumptions and confidence;
+17. estimate schedule/operations impact of mandatory protection measures;
+18. return expensive/risky features to Product Manager with KEEP / REDESIGN / DEFER / DROP recommendation.
 
 ### Outputs
 - PD-007 SECURITY_CONTEXT
@@ -126,6 +131,7 @@ PASS only if:
 - PD-009 AUTHORITY_AND_ACTION_MATRIX
 - PD-010 INITIAL_RISK_REGISTER
 - PD-011 SECURITY_CONSTRAINTS
+       └── SECURITY_COST_IMPACT, including SECURITY_COST_IMPACT
 
 ### Gate
 `GATE-PD02-SECURITY`
@@ -135,7 +141,11 @@ PASS only if:
 - prohibited/high-impact actions are identified;
 - human gates are identified;
 - audit/evidence needs are known;
-- security constraints are handed forward.
+- security constraints are handed forward;
+- material security cost drivers are visible;
+- one-time vs recurring security burden is distinguished;
+- estimates include assumptions/confidence instead of false precision;
+- Product Manager receives a feature-level KEEP / REDESIGN / DEFER / DROP recommendation where security burden materially changes product viability.
 
 ---
 
@@ -152,11 +162,16 @@ PASS only if:
 4. mark each item APPLICABLE / NOT_APPLICABLE / TBD / REVIEW_REQUIRED;
 5. record temporal/version scope;
 6. identify obligations affecting process, data, authority, retention, evidence or deployment;
-7. identify questions requiring legal specialist review.
+7. identify questions requiring legal specialist review;
+8. identify licensing/certification/assessment obligations with cost impact;
+9. estimate one-time and recurring legal/compliance/license cost ranges;
+10. identify obligations that materially change time-to-market or operating cost;
+11. return high-burden features to Product Manager for scope reconsideration.
 
 ### Outputs
 - PD-012 COMPLIANCE_APPLICABILITY_MATRIX
 - PD-013 LEGAL_CONSTRAINTS
+       └── LICENSE_COMPLIANCE_COST_IMPACT, including LICENSE_COMPLIANCE_COST_IMPACT
 - PD-014 REGULATORY_SOURCE_REGISTER
 
 ### Gate
@@ -166,7 +181,10 @@ PASS only if:
 - jurisdiction is explicit;
 - applicability is reasoned, not merely a document list;
 - TBD items are visible;
-- no unsupported compliance claim is marked as confirmed.
+- no unsupported compliance claim is marked as confirmed;
+- license/compliance cost drivers are visible;
+- one-time vs recurring compliance burden is distinguished;
+- uncertainty and source of estimate are explicit.
 
 ---
 
@@ -306,6 +324,8 @@ All PD-001..PD-034 artifacts.
 - Are requirements testable?
 - Are major unknowns explicit?
 - Is architecture actually needed now?
+- Is the product still economically sensible after security, licensing, compliance and operating burden?
+- Which features should be kept, redesigned, deferred or dropped because their protection/compliance cost is disproportionate to value?
 
 ### Outputs
 - PD-035 PRE_DESIGN_REVIEW_REPORT
@@ -421,3 +441,53 @@ IDEA
 ```
 
 Architecture starts only after the left side of this chain is materially complete.
+
+
+---
+
+# Security / Compliance Cost Feedback Loop
+
+Pre-design security and compliance are not only constraint functions. They must provide Product Management with an economic consequence model.
+
+```text
+FEATURE / IDEA
+      ↓
+SECURITY + LEGAL TRIGGERS
+      ↓
+REQUIRED CONTROLS / LICENSES / ASSESSMENTS
+      ↓
+IMPLEMENTATION BURDEN
+      ├── one-time cost
+      ├── recurring licenses/subscriptions
+      ├── infrastructure
+      ├── integration
+      ├── personnel/operations
+      ├── audit/certification/assessment
+      ├── evidence/log retention
+      └── delivery delay
+      ↓
+VALUE vs BURDEN REVIEW
+      ↓
+KEEP / REDESIGN / DEFER / DROP
+```
+
+At early pre-design stages, cost must be expressed as a range or band when exact vendor/architecture choices are not yet known. Exact prices must not be invented.
+
+Recommended fields:
+
+- currency / cost band;
+- one_time_cost_range;
+- recurring_monthly_or_annual_range;
+- mandatory_vs_optional;
+- cost_driver;
+- triggering_feature;
+- triggering_requirement/source;
+- assumptions;
+- confidence;
+- schedule_impact;
+- operational_staff_impact;
+- vendor_lock_in_risk;
+- cheaper_alternative;
+- product_recommendation.
+
+The purpose is to prevent a technically attractive idea from moving forward while its security/compliance tail makes it economically irrational.
