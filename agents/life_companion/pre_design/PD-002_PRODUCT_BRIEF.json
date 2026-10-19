@@ -1,0 +1,77 @@
+{
+  "schema_version": "father.pre_design.product_brief.v0.1",
+  "document_id": "PD-002",
+  "project_id": "LIFE-001",
+  "agent_id": "FATHER-LIFE-COMPANION-001",
+  "status": "DRAFT",
+  "product_vision": "Personal continuity layer that preserves useful life context and helps a person organize information, obligations and decisions across time.",
+  "primary_user_hypothesis": "Independent adult with multiple long-term life contexts and significant personal information/document load.",
+  "first_product_slice": {
+    "name": "LIFE CONTINUITY DESK",
+    "purpose": "Prove value of persistent, source-aware personal context without autonomous high-impact actions.",
+    "core_objects": [
+      "documents",
+      "events",
+      "obligations",
+      "decisions",
+      "provenance",
+      "unknowns"
+    ],
+    "core_actions": [
+      "add",
+      "organize",
+      "link",
+      "search",
+      "remind",
+      "package",
+      "export"
+    ]
+  },
+  "authority_principle": "AGENT_ASSISTS_HUMAN_DECIDES",
+  "mvp_in_scope": [
+    "profile",
+    "personal_objects",
+    "documents",
+    "events_timeline",
+    "tasks_deadlines_obligations",
+    "decisions_and_reasons",
+    "relationships",
+    "search",
+    "context_package",
+    "import_export",
+    "provenance_and_uncertainty"
+  ],
+  "mvp_out_of_scope": [
+    "autonomous_medical_decisions",
+    "autonomous_legal_decisions",
+    "autonomous_financial_operations",
+    "unapproved_purchases",
+    "document_signing",
+    "bank_account_control",
+    "child_guardianship",
+    "biometric_control",
+    "surveillance",
+    "social_scoring",
+    "automatic_third_party_sharing",
+    "unrestricted_device_message_access",
+    "digital_inheritance",
+    "health_diagnosis",
+    "emergency_response_automation"
+  ],
+  "product_decisions": [
+    "birth_to_death_is_long_term_vision_not_mvp",
+    "first_target_is_independent_adult",
+    "first_slice_is_life_continuity_desk",
+    "mvp_proves_continuity_not_autonomy",
+    "high_risk_autonomy_excluded",
+    "portability_and_provenance_are_first_class_properties"
+  ],
+  "next_documents": [
+    "PD-003",
+    "PD-004",
+    "PD-005",
+    "PD-006"
+  ],
+  "next_gate": "GATE-PD01-PRODUCT",
+  "downstream_after_gate": "PD-007_INFORMATION_SECURITY_INTAKE"
+}
