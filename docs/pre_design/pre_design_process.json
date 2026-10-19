@@ -1,0 +1,114 @@
+{
+  "schema_version": "father.pre_design.process.v0.1",
+  "process_id": "FATHER-PREDESIGN-001",
+  "final_gate": "READY_FOR_ARCHITECTURE",
+  "stages": [
+    {
+      "id": "PD-00",
+      "name": "Idea Intake",
+      "gate": "GATE-PD00-IDEA",
+      "outputs": [
+        "PD-001"
+      ]
+    },
+    {
+      "id": "PD-01",
+      "name": "Product Manager Discovery",
+      "gate": "GATE-PD01-PRODUCT",
+      "outputs": [
+        "PD-002",
+        "PD-003",
+        "PD-004",
+        "PD-005",
+        "PD-006"
+      ]
+    },
+    {
+      "id": "PD-02",
+      "name": "Information Security Intake",
+      "gate": "GATE-PD02-SECURITY",
+      "outputs": [
+        "PD-007",
+        "PD-008",
+        "PD-009",
+        "PD-010",
+        "PD-011"
+      ],
+      "must_precede": [
+        "PD-04",
+        "PD-05"
+      ]
+    },
+    {
+      "id": "PD-03",
+      "name": "Legal / Compliance Applicability",
+      "gate": "GATE-PD03-COMPLIANCE",
+      "outputs": [
+        "PD-012",
+        "PD-013",
+        "PD-014"
+      ]
+    },
+    {
+      "id": "PD-04",
+      "name": "Business Analysis",
+      "gate": "GATE-PD04-BA",
+      "outputs": [
+        "PD-015",
+        "PD-016",
+        "PD-017",
+        "PD-018",
+        "PD-019",
+        "PD-020"
+      ]
+    },
+    {
+      "id": "PD-05",
+      "name": "System Analysis",
+      "gate": "GATE-PD05-SA",
+      "outputs": [
+        "PD-021",
+        "PD-022",
+        "PD-023",
+        "PD-024",
+        "PD-025",
+        "PD-026",
+        "PD-027"
+      ]
+    },
+    {
+      "id": "PD-06",
+      "name": "Requirements Baseline",
+      "gate": "GATE-PD06-REQ",
+      "outputs": [
+        "PD-028",
+        "PD-029",
+        "PD-030",
+        "PD-031",
+        "PD-032",
+        "PD-033",
+        "PD-034"
+      ]
+    },
+    {
+      "id": "PD-07",
+      "name": "Pre-Design Review",
+      "gate": "GATE-PD07-READY",
+      "outputs": [
+        "PD-035",
+        "PD-036"
+      ]
+    }
+  ],
+  "allowed_final_decisions": [
+    "READY_FOR_ARCHITECTURE",
+    "RETURN_TO_PRODUCT",
+    "RETURN_TO_SECURITY",
+    "RETURN_TO_COMPLIANCE",
+    "RETURN_TO_BA",
+    "RETURN_TO_SA",
+    "RETURN_TO_REQUIREMENTS",
+    "HOLD",
+    "CANCEL"
+  ]
+}
