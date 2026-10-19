@@ -32,7 +32,8 @@
         "PD-008",
         "PD-009",
         "PD-010",
-        "PD-011"
+        "PD-011",
+        "PD-011A"
       ],
       "must_precede": [
         "PD-04",
@@ -45,7 +46,8 @@
         "schedule_impact",
         "operations_impact",
         "product_recommendation_keep_redesign_defer_drop"
-      ]
+      ],
+      "required_budget_artifact": "SECURITY_COMPLIANCE_BUDGET_ENVELOPE"
     },
     {
       "id": "PD-03",
@@ -141,6 +143,29 @@
       "schedule"
     ],
     "decisions": [
+      "KEEP",
+      "REDESIGN",
+      "DEFER",
+      "DROP"
+    ]
+  },
+  "domain_budget_policy": {
+    "owner": "INFORMATION_SECURITY",
+    "contributors": [
+      "LEGAL_COMPLIANCE",
+      "DOMAIN_SPECIALIST",
+      "ARCHITECT_INFRASTRUCTURE",
+      "FINOPS_PROCUREMENT"
+    ],
+    "trigger": "PRODUCT_FEATURE_OR_ACTIVITY",
+    "rule": "MANDATORY_DOMAIN_STACK_MUST_BE_IDENTIFIED_AND_BUDGETED_BEFORE_ARCHITECTURE",
+    "examples": [
+      "commerce_ecommerce",
+      "finance_banking",
+      "healthcare",
+      "government_regulated"
+    ],
+    "decision_feedback": [
       "KEEP",
       "REDESIGN",
       "DEFER",
