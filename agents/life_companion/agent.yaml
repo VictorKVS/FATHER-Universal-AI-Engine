@@ -5,7 +5,7 @@ name: Персональный агент сопровождения жизни
 short_name: LIFE_COMPANION
 role: Personal Lifelong Companion
 category: development_candidate
-status: idea
+status: product_discovery
 maturity: IDEA_DRAFT
 runtime_status: NOT_IMPLEMENTED
 orchestrator: FATHER
@@ -28,7 +28,7 @@ development_pipeline:
   - TEST_EVAL_SECURITY
   - OPERATIONS
 
-current_stage: IDEA
+current_stage: PRODUCT_MANAGER_DISCOVERY
 
 mandatory_next_gate:
   stage: PRODUCT_MANAGER
