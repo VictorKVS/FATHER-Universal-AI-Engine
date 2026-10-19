@@ -1,0 +1,99 @@
+{
+  "schema_version": "father.pre_design.budget.v0.1",
+  "artifact": "SECURITY_COMPLIANCE_BUDGET_ENVELOPE",
+  "owner": "INFORMATION_SECURITY",
+  "contributors": [
+    "PRODUCT_MANAGER",
+    "LEGAL_COMPLIANCE",
+    "DOMAIN_SPECIALIST",
+    "ARCHITECT_INFRASTRUCTURE",
+    "FINOPS_PROCUREMENT"
+  ],
+  "cost_classes": [
+    "MANDATORY_BY_LAW_OR_REGULATOR",
+    "MANDATORY_BY_CONTRACT",
+    "MANDATORY_BY_PAYMENT_OR_PLATFORM_PROVIDER",
+    "MANDATORY_BY_SECURITY_RISK",
+    "MANDATORY_FOR_OPERATION",
+    "RECOMMENDED",
+    "OPTIONAL"
+  ],
+  "domains": {
+    "commerce_ecommerce": [
+      "payment_acquiring",
+      "bank_payment_integration",
+      "fiscal_receipt_infrastructure_if_applicable",
+      "anti_fraud",
+      "refund_chargeback",
+      "reconciliation",
+      "identity_authentication",
+      "personal_data_controls",
+      "transaction_audit_evidence",
+      "payment_security_scope_if_applicable",
+      "accounting_erp_integration",
+      "customer_notifications"
+    ],
+    "finance_banking": [
+      "regulated_integrations",
+      "kyc_aml_if_applicable",
+      "strong_authentication",
+      "transaction_monitoring",
+      "fraud_controls",
+      "audit_evidence_retention",
+      "cryptography_key_management",
+      "segregated_environments",
+      "regulatory_reporting",
+      "approved_security_products_if_required"
+    ],
+    "healthcare": [
+      "sensitive_medical_data_controls",
+      "consent_authority",
+      "strong_access_control",
+      "audit_trail",
+      "retention",
+      "regulated_integrations",
+      "human_review",
+      "backup_recovery",
+      "hosting_constraints_if_applicable"
+    ],
+    "government_regulated": [
+      "classification_categorization",
+      "required_security_controls",
+      "certified_security_products_if_applicable",
+      "assessment_attestation_if_applicable",
+      "logging_evidence",
+      "protected_integration",
+      "operational_security_processes"
+    ]
+  },
+  "item_fields": [
+    "item_id",
+    "triggering_feature",
+    "domain_profile",
+    "requirement_source",
+    "cost_class",
+    "mandatory_status",
+    "one_time_cost_range",
+    "recurring_monthly_range",
+    "recurring_annual_range",
+    "transaction_or_usage_cost",
+    "implementation_effort",
+    "integration_effort",
+    "required_staff",
+    "audit_or_assessment_cost",
+    "evidence_retention_cost",
+    "infrastructure_delta",
+    "schedule_impact",
+    "vendor_lock_in_risk",
+    "alternative",
+    "confidence",
+    "assumptions"
+  ],
+  "decisions": [
+    "KEEP",
+    "REDESIGN",
+    "DEFER",
+    "DROP"
+  ],
+  "exact_unsupported_prices": "FORBIDDEN"
+}
