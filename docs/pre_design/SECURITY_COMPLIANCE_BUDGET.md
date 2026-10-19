@@ -9,16 +9,19 @@ At Pre-Design stage the result is a justified budget range with assumptions, man
 
 # 1. Ownership
 
-Primary coordinator: **Information Security**.
+Primary owners:
 
-Contributors:
+- **Information Security Specialist** — accountable for applicability, risk, required protection measures, mandatory security/licensing/assessment candidates and the security budget envelope.
+- **DevSecOps Security** — accountable for implementation feasibility, security engineering gates, supply-chain/runtime/infrastructure controls and the recurring operational security burden.
+
+Supporting contributors:
 - Product Manager;
 - Legal / Compliance;
 - Domain specialist;
 - Architect / Infrastructure;
 - FinOps / procurement when available.
 
-Information Security coordinates the first estimate because security, data class, regulated activity, trust boundaries and required controls strongly affect architecture and total cost.
+The two security roles jointly produce the estimate. Product/BA/SA do not invent security controls or security prices.
 
 ---
 
@@ -48,6 +51,20 @@ MANDATORY COST ENVELOPE
 ```
 
 ---
+
+# 2.1 Role split
+
+```text
+ИБ-СПЕЦИАЛИСТ
+  applicability / risk / controls / licenses / compliance impact / budget
+             +
+DEVSECOPS SECURITY
+  CI/CD / supply chain / runtime / infra / secrets / observability / OPEX
+             ↓
+SECURITY_COMPLIANCE_BUDGET_ENVELOPE
+```
+
+ALINA supplies source-grounded evidence and comparisons, but is not the approval authority.
 
 # 3. Mandatory domain stack
 
