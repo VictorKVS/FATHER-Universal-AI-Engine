@@ -537,3 +537,83 @@ KEEP / REDESIGN / DEFER / DROP
 ALINA must not invent applicability or cost. She enriches the Information Security decision with exact source documents, versions, clauses, applicability reasoning, implementation candidates and evidence-backed price/cost inputs where available.
 
 This keeps the prototype fast while preserving the mandatory Security gate.
+
+
+---
+
+# Security ownership model
+
+Security-related applicability, controls, implementation burden and security budget are owned jointly by two professional roles.
+
+## Information Security Specialist
+
+Accountable for:
+
+- Security Intake;
+- information/data classification;
+- trust and authority boundaries;
+- preliminary threat/risk model;
+- allowed/prohibited actions;
+- human approval requirements;
+- legal/regulatory/security applicability together with Compliance where needed;
+- mandatory security controls;
+- mandatory security products/licenses/certification/assessment candidates;
+- security cost envelope;
+- security exceptions and residual-risk escalation;
+- security recommendation to Product: KEEP / REDESIGN / DEFER / DROP.
+
+## DevSecOps Security
+
+Accountable for:
+
+- translating security requirements into executable engineering gates;
+- secure SDLC / CI/CD controls;
+- source, dependency, secret and license scanning;
+- SBOM / provenance / artifact integrity;
+- container/image/IaC/Kubernetes security where applicable;
+- secrets/key-management implementation path;
+- environment separation and deployment security;
+- runtime security controls;
+- observability/security telemetry requirements;
+- vulnerability/remediation process;
+- release security gates;
+- rollback/recovery requirements related to security;
+- operational security cost and staffing impact;
+- technical feasibility/cost feedback before architecture is approved.
+
+## Joint decision
+
+```text
+INFORMATION SECURITY SPECIALIST
+              +
+DEVSECOPS SECURITY
+              ↓
+SECURITY DECISION PACK
+              ↓
+PRODUCT / ARCHITECTURE GATE
+```
+
+A project must not receive READY_FOR_ARCHITECTURE when material security questions remain unresolved without an explicit accepted TBD/exception.
+
+## ALINA boundary
+
+ALINA Analyst:
+
+- finds and structures laws, standards, regulator documents, vendor documentation and other sources;
+- verifies versions and dates;
+- maps source fragments to requirements/controls;
+- highlights conflicts and missing evidence;
+- gathers evidence-backed price/licensing inputs where available;
+- prepares comparison tables and traceability.
+
+ALINA does NOT:
+
+- determine legal applicability by herself;
+- accept residual risk;
+- approve a security architecture;
+- approve a vendor/SZI;
+- invent mandatory controls;
+- invent exact prices;
+- replace the Information Security Specialist or DevSecOps Security.
+
+Final security decisions remain human-owned.
