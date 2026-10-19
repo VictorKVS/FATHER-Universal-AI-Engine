@@ -150,7 +150,10 @@
     ]
   },
   "domain_budget_policy": {
-    "owner": "INFORMATION_SECURITY",
+    "owner": [
+      "INFORMATION_SECURITY_SPECIALIST",
+      "DEVSECOPS_SECURITY"
+    ],
     "contributors": [
       "LEGAL_COMPLIANCE",
       "DOMAIN_SPECIALIST",
@@ -188,6 +191,47 @@
       "REQUIRED_CONTROLS_SYSTEMS_LICENSES",
       "COST_TIME_OPERATIONS_IMPACT",
       "PRODUCT_DECISION"
+    ]
+  },
+  "security_ownership": {
+    "accountable": [
+      "INFORMATION_SECURITY_SPECIALIST",
+      "DEVSECOPS_SECURITY"
+    ],
+    "information_security_specialist": [
+      "security_intake",
+      "data_classification",
+      "trust_authority_boundaries",
+      "risk_model",
+      "allowed_prohibited_actions",
+      "human_approval_rules",
+      "security_compliance_applicability",
+      "mandatory_controls",
+      "mandatory_security_products_licenses_assessments",
+      "security_budget_envelope",
+      "security_product_recommendation"
+    ],
+    "devsecops_security": [
+      "secure_sdlc",
+      "cicd_security_gates",
+      "secret_scan",
+      "sast_sca_license_scan",
+      "sbom_provenance",
+      "container_iac_kubernetes_security",
+      "secrets_key_management",
+      "environment_deployment_security",
+      "runtime_security",
+      "security_observability",
+      "vulnerability_remediation",
+      "release_gates",
+      "rollback_recovery",
+      "security_opex_staffing"
+    ],
+    "alina_role": "SOURCE_NORMATIVE_EVIDENCE_ENRICHMENT_ONLY",
+    "alina_may_approve": false,
+    "architecture_security_gate_requires": [
+      "INFORMATION_SECURITY_SPECIALIST",
+      "DEVSECOPS_SECURITY"
     ]
   }
 }
