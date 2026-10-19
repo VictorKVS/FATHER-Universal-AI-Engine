@@ -1,0 +1,100 @@
+schema_version: "1.0"
+agent_id: FATHER-LIFE-COMPANION-001
+case_id: LIFE-001
+name: Персональный агент сопровождения жизни
+short_name: LIFE_COMPANION
+role: Personal Lifelong Companion
+category: development_candidate
+status: idea
+maturity: IDEA_DRAFT
+runtime_status: NOT_IMPLEMENTED
+orchestrator: FATHER
+
+purpose: >
+  Сопровождать одного человека на протяжении жизни, сохранять непрерывность
+  полезного контекста, помогать организовывать информацию, задачи и решения,
+  адаптируя функции к жизненному этапу и полномочиям.
+
+authority_principle: AGENT_ASSISTS_HUMAN_DECIDES
+
+development_pipeline:
+  - IDEA
+  - PRODUCT_MANAGER
+  - INFORMATION_SECURITY_INTAKE
+  - BUSINESS_ANALYSIS
+  - SYSTEM_ANALYSIS
+  - ARCHITECTURE
+  - IMPLEMENTATION
+  - TEST_EVAL_SECURITY
+  - OPERATIONS
+
+current_stage: IDEA
+
+mandatory_next_gate:
+  stage: PRODUCT_MANAGER
+  security_before_business_analysis: true
+
+candidate_lifecycle:
+  - birth_early_childhood
+  - childhood
+  - education
+  - adolescence
+  - early_adulthood
+  - career_family_household
+  - mature_adulthood
+  - retirement
+  - late_life_support
+  - end_of_life_digital_legacy_handoff
+
+candidate_capability_domains:
+  - identity_documents
+  - family_household
+  - education
+  - health_wellness_context
+  - career
+  - finance_property
+  - legal_administrative
+  - travel_mobility
+  - goals_tasks
+  - personal_knowledge_memory
+  - digital_assets
+  - communications_contacts
+  - purchases_warranties_services
+  - safety_emergency
+  - dependents
+  - retirement
+  - digital_legacy
+
+explicit_non_goals:
+  - autonomous_medical_diagnosis
+  - autonomous_financial_advice
+  - autonomous_legal_representation
+  - surveillance
+  - social_scoring
+  - substitute_parent_guardian
+  - unrestricted_single_memory
+  - finished_architecture
+
+security:
+  status: NOT_ASSESSED
+  information_security_intake_required: true
+  architecture_controls: TBD
+  legal_applicability: TBD
+
+source_case:
+  repository: VictorKVS/OTUS-
+  branch: feature/father-ecosystem-workspace-v03
+  path: factory/ecosystem-v03/cases/LIFE-001
+
+mandatory_outputs_next_stage:
+  - product_brief
+  - stakeholder_map
+  - first_use_case_hypothesis
+  - value_hypothesis
+  - scope_and_non_goals
+  - success_metrics
+  - open_questions
+
+notes:
+  - "Registered in existing FATHER agents library; no parallel registry."
+  - "Idea-level record only; no implementation claims."
