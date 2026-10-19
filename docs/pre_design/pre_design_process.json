@@ -171,5 +171,23 @@
       "DEFER",
       "DROP"
     ]
+  },
+  "prototype_security_placeholder_policy": {
+    "upstream_roles_must_not_invent_security": true,
+    "security_status": "TBD_BY_SECURITY",
+    "legal_applicability": "TBD_BY_SECURITY_AND_COMPLIANCE",
+    "mandatory_controls": "TBD_BY_SECURITY",
+    "mandatory_licenses": "TBD_BY_SECURITY",
+    "mandatory_domain_systems": "TBD_BY_SECURITY_AND_DOMAIN",
+    "security_cost": "TBD_BY_SECURITY",
+    "compliance_cost": "TBD_BY_SECURITY_AND_COMPLIANCE",
+    "refinement_chain": [
+      "INFORMATION_SECURITY_ANALYST",
+      "ALINA_SOURCE_NORMATIVE_ENRICHMENT",
+      "APPLICABILITY",
+      "REQUIRED_CONTROLS_SYSTEMS_LICENSES",
+      "COST_TIME_OPERATIONS_IMPACT",
+      "PRODUCT_DECISION"
+    ]
   }
 }
