@@ -1,0 +1,41 @@
+schema_version: "father.project.v0.1"
+project_id: FATHER-ACADEMY-OSINT-001
+name: ALINA OSINT ACADEMY
+version: "0.1"
+status: PRE_DESIGN
+development_status: IN_DEVELOPMENT
+branch: feature/alina-osint-academy-v01
+source_brief:
+  title: FATHER DEVELOPMENT PACK — ALINA OSINT ACADEMY
+  version: "0.1"
+  mode:
+    - Prototype First
+    - Evidence Driven
+    - Human Approval
+product_boundary:
+  separate_platform: false
+  parent: FATHER_ANALYTICAL_CORE
+first_profession: OSINT_SPECIALIST
+first_student: ALINA_OSINT_STUDENT
+first_proving_ground: OSINT-TG-001
+architecture_status: NOT_APPROVED
+security_status: TBD_BY_SECURITY
+devsecops_security_status: TBD
+legal_compliance_status: TBD_BY_SECURITY_AND_COMPLIANCE
+runtime_evidence:
+  telegram_connectivity: REVALIDATION_REQUIRED
+  note: "Previous source brief claims successful verification; latest operator evidence showed connection timeout."
+candidate_reuse:
+  - Agent_Zoo
+  - Model_Zoo
+  - Knowledge_Base_RAG
+  - Knowledge_Graph
+  - Memory
+  - MCP_Tools
+  - Workflow_Engine
+  - Evaluation
+  - Observability
+  - Guardrails
+  - Artifact_Store
+next_stage: PRODUCT_DISCOVERY
+pre_design_gate_required: true
