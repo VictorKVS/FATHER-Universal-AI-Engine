@@ -1,0 +1,74 @@
+{
+  "schema_version": "father.pre_design.security_context.v0.1",
+  "document_id": "PD-007",
+  "project_id": "FATHER-ACADEMY-OSINT-001",
+  "status": "DRAFT",
+  "owners": [
+    "INFORMATION_SECURITY_SPECIALIST",
+    "DEVSECOPS_SECURITY"
+  ],
+  "architecture_status": "BLOCKED",
+  "protected_values": [
+    "knowledge_base",
+    "source_provenance",
+    "curriculum",
+    "assignments",
+    "training_runs",
+    "evidence",
+    "evaluation",
+    "skill_profile",
+    "agent_profile",
+    "procedures",
+    "tool_permissions",
+    "secrets",
+    "audit_history"
+  ],
+  "security_objectives": [
+    "training_state_integrity",
+    "provenance",
+    "least_privilege",
+    "human_authority",
+    "secret_isolation",
+    "separation_of_duties",
+    "reproducibility",
+    "evidence_preservation",
+    "safe_failure",
+    "no_fake_pass"
+  ],
+  "trust_boundaries": [
+    "HUMAN_FATHER",
+    "ALINA_STUDENT",
+    "STUDENT_TOOLS",
+    "FATHER_EXTERNAL_SOURCES",
+    "FATHER_EXTERNAL_MODELS_SERVICES",
+    "RUNTIME_REPOSITORY",
+    "TRAINING_STATE_EVALUATION",
+    "EVIDENCE_TO_KNOWLEDGE_SKILL_PROMOTION"
+  ],
+  "preliminary_data_classes": [
+    "PUBLIC_OPEN_SOURCE",
+    "INTERNAL_TRAINING_DATA",
+    "SECURITY_SENSITIVE_CONFIGURATION",
+    "CREDENTIALS_SECRETS",
+    "OPERATIONAL_EVIDENCE",
+    "POTENTIAL_PERSONAL_SENSITIVE_DATA"
+  ],
+  "core_decisions": [
+    "STUDENT_NOT_TRUSTED_BY_DEFAULT",
+    "LEAST_PRIVILEGE_TOOL_ACCESS",
+    "NO_SELF_CERTIFICATION",
+    "EXTERNAL_CONTENT_UNTRUSTED",
+    "SECRETS_EXCLUDED_FROM_REPO_RAG_TRAINING",
+    "EVIDENCE_EVALUATION_INTEGRITY_CRITICAL",
+    "NO_RUNTIME_FAILURE_TO_PASS",
+    "HUMAN_APPROVAL_FOR_HIGH_RISK_ACTIONS"
+  ],
+  "next_documents": [
+    "PD-008",
+    "PD-009",
+    "PD-010",
+    "PD-011",
+    "PD-011A"
+  ],
+  "next_gate": "GATE-PD02-SECURITY"
+}
