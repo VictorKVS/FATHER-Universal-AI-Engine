@@ -2,7 +2,7 @@ schema_version: "father.project.v0.1"
 project_id: FATHER-ACADEMY-OSINT-001
 name: ALINA OSINT ACADEMY
 version: "0.1"
-status: PRE_DESIGN
+status: SECURITY_INTAKE_READY
 development_status: IN_DEVELOPMENT
 branch: feature/alina-osint-academy-v01
 source_brief:
@@ -37,5 +37,10 @@ candidate_reuse:
   - Observability
   - Guardrails
   - Artifact_Store
-next_stage: PRODUCT_DISCOVERY
+next_stage: INFORMATION_SECURITY_AND_DEVSECOPS_SECURITY
 pre_design_gate_required: true
+
+product_gate:
+  id: GATE-PD01-PRODUCT
+  decision: PASS
+  architecture_unlocked: false
