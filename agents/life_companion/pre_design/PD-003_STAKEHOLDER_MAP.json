@@ -1,0 +1,163 @@
+{
+  "schema_version": "father.pre_design.stakeholder_map.v0.1",
+  "document_id": "PD-003",
+  "project_id": "LIFE-001",
+  "agent_id": "FATHER-LIFE-COMPANION-001",
+  "status": "DRAFT",
+  "security_status": "TBD_BY_SECURITY",
+  "legal_applicability": "TBD_BY_SECURITY_AND_COMPLIANCE",
+  "stakeholders": [
+    {
+      "id": "STK-001",
+      "role": "PRIMARY_USER",
+      "interest": "VERY_HIGH",
+      "influence": "VERY_HIGH",
+      "scope": "MVP"
+    },
+    {
+      "id": "STK-002",
+      "role": "PRODUCT_OWNER_CUSTOMER",
+      "interest": "VERY_HIGH",
+      "influence": "VERY_HIGH",
+      "scope": "MVP"
+    },
+    {
+      "id": "STK-003",
+      "role": "TRUSTED_PERSON_FAMILY",
+      "interest": "MEDIUM",
+      "influence": "MEDIUM",
+      "scope": "FUTURE"
+    },
+    {
+      "id": "STK-004",
+      "role": "PARENT_GUARDIAN",
+      "interest": "HIGH",
+      "influence": "VERY_HIGH",
+      "scope": "FUTURE"
+    },
+    {
+      "id": "STK-005",
+      "role": "PROFESSIONAL_SPECIALIST",
+      "interest": "HIGH",
+      "influence": "MEDIUM",
+      "scope": "LIMITED_MVP"
+    },
+    {
+      "id": "STK-006",
+      "role": "INFORMATION_SECURITY_SPECIALIST",
+      "interest": "HIGH",
+      "influence": "VERY_HIGH",
+      "scope": "MANDATORY_GATE"
+    },
+    {
+      "id": "STK-007",
+      "role": "DEVSECOPS_SECURITY",
+      "interest": "HIGH",
+      "influence": "VERY_HIGH",
+      "scope": "MANDATORY_GATE"
+    },
+    {
+      "id": "STK-008",
+      "role": "ALINA_ANALYST",
+      "interest": "HIGH",
+      "influence": "MEDIUM",
+      "scope": "EVIDENCE_SUPPORT"
+    },
+    {
+      "id": "STK-009",
+      "role": "LEGAL_COMPLIANCE",
+      "interest": "HIGH",
+      "influence": "VERY_HIGH",
+      "scope": "CONDITIONAL_OR_MANDATORY_BY_APPLICABILITY"
+    },
+    {
+      "id": "STK-010",
+      "role": "PRODUCT_MANAGER",
+      "interest": "VERY_HIGH",
+      "influence": "VERY_HIGH",
+      "scope": "MVP"
+    },
+    {
+      "id": "STK-011",
+      "role": "BUSINESS_ANALYST",
+      "interest": "HIGH",
+      "influence": "HIGH",
+      "scope": "DOWNSTREAM"
+    },
+    {
+      "id": "STK-012",
+      "role": "SYSTEM_ANALYST",
+      "interest": "HIGH",
+      "influence": "HIGH",
+      "scope": "DOWNSTREAM"
+    },
+    {
+      "id": "STK-013",
+      "role": "ARCHITECT",
+      "interest": "HIGH",
+      "influence": "VERY_HIGH",
+      "scope": "POST_PRE_DESIGN_GATE"
+    },
+    {
+      "id": "STK-014",
+      "role": "DEVELOPMENT",
+      "interest": "HIGH",
+      "influence": "MEDIUM",
+      "scope": "IMPLEMENTATION"
+    },
+    {
+      "id": "STK-015",
+      "role": "QA_EVALUATION",
+      "interest": "HIGH",
+      "influence": "HIGH",
+      "scope": "RELEASE"
+    },
+    {
+      "id": "STK-016",
+      "role": "SRE_OPERATIONS",
+      "interest": "HIGH",
+      "influence": "HIGH",
+      "scope": "OPERATIONS"
+    },
+    {
+      "id": "STK-017",
+      "role": "EXTERNAL_SERVICE_PROVIDER",
+      "interest": "MEDIUM",
+      "influence": "HIGH",
+      "scope": "DEPENDENCY"
+    },
+    {
+      "id": "STK-018",
+      "role": "DATA_SOURCE_OWNER",
+      "interest": "MEDIUM",
+      "influence": "HIGH",
+      "scope": "DEPENDENCY"
+    },
+    {
+      "id": "STK-019",
+      "role": "REGULATOR",
+      "interest": "CONDITIONAL",
+      "influence": "VERY_HIGH",
+      "scope": "IF_APPLICABLE"
+    },
+    {
+      "id": "STK-020",
+      "role": "AUDITOR_ASSESSOR",
+      "interest": "MEDIUM",
+      "influence": "HIGH",
+      "scope": "IF_APPLICABLE"
+    }
+  ],
+  "mandatory_gate_owners": [
+    "INFORMATION_SECURITY_SPECIALIST",
+    "DEVSECOPS_SECURITY"
+  ],
+  "alina_authority": "EVIDENCE_SUPPORT_ONLY",
+  "mvp_primary_context_owner": "PRIMARY_USER",
+  "next_documents": [
+    "PD-004",
+    "PD-005",
+    "PD-006"
+  ],
+  "next_gate": "GATE-PD01-PRODUCT"
+}
