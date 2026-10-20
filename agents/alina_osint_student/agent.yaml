@@ -1,0 +1,29 @@
+schema_version: "1.0"
+agent_id: FATHER-OSINT-STUDENT-001
+name: ALINA OSINT STUDENT
+short_name: ALINA_OSINT_STUDENT
+role: OSINT Specialist Trainee
+category: development_candidate
+status: pre_design
+runtime_status: NOT_CERTIFIED
+orchestrator: FATHER
+training_project: FATHER-ACADEMY-OSINT-001
+teacher_role: ALINA_ANALYST
+authority:
+  default: RESTRICTED
+  unrestricted_tools: false
+security_status: TBD_BY_SECURITY
+devsecops_security_status: TBD
+candidate_capabilities:
+  - receive_research_assignment
+  - create_collection_plan
+  - select_allowed_tools
+  - collect_open_source_material
+  - preserve_source_identifiers
+  - extract_entities_relations
+  - verify_information
+  - build_relationship_graph
+  - prepare_analytic_report
+  - submit_evidence_for_evaluation
+certification_rule: "NO_EVIDENCE_NO_MASTERY"
+first_proving_ground: OSINT-TG-001
