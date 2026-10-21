@@ -1,0 +1,57 @@
+{
+  "schema_version": "father.project_memory.v0.1",
+  "artifact": "PROJECT_MEMORY",
+  "purpose": "Human-readable approved summary of project rationale linked to full manufacturing history.",
+  "statuses": [
+    "NOT_READY",
+    "DRAFT",
+    "IN_REVIEW",
+    "APPROVED",
+    "SUPERSEDED",
+    "ARCHIVED"
+  ],
+  "required_sections": [
+    "what_was_built",
+    "why_it_was_needed",
+    "final_solution",
+    "why_this_solution",
+    "rejected_alternatives",
+    "key_constraints",
+    "tradeoffs",
+    "security_compliance_result",
+    "cost_result",
+    "known_limitations",
+    "lessons_learned",
+    "revisit_triggers",
+    "key_evidence"
+  ],
+  "decision_record_fields": [
+    "decision_id",
+    "project_id",
+    "stage_id",
+    "title",
+    "context",
+    "decision",
+    "rationale",
+    "alternatives",
+    "rejected_reasons",
+    "constraints",
+    "evidence_refs",
+    "owner",
+    "reviewers",
+    "cost_impact",
+    "security_impact",
+    "operational_impact",
+    "status",
+    "effective_from",
+    "revisit_triggers"
+  ],
+  "rules": {
+    "full_history_is_immutable": true,
+    "rejected_alternatives_are_retained": true,
+    "approved_memory_requires_evidence_links": true,
+    "material_decision_requires_rationale": true,
+    "approved_project_requires_project_memory": true,
+    "material_change_requires_new_memory_version": true
+  }
+}
