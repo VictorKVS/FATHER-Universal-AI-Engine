@@ -27,9 +27,9 @@ const esc=(value)=>String(value??"")
 function stateClass(value){
   const v=String(value||"").toUpperCase();
   if(["PASS","MERGED","CONNECTED","READY_FOR_MERGE"].includes(v))return"pass";
-  if(["IN_PROGRESS","SECURITY_INTAKE","PRODUCT_DISCOVERY","AHEAD"].includes(v))return"progress";
+  if(["IN_PROGRESS","SECURITY_INTAKE","PRODUCT_DISCOVERY","AHEAD","RETURN"].includes(v))return"progress";
   if(["FAIL","BLOCKED","DIVERGED"].includes(v))return"blocked";
-  if(["WAITING","NOT_READY","IN_REVIEW"].includes(v))return"waiting";
+  if(["WAITING","NOT_READY","IN_REVIEW","READY","HOLD"].includes(v))return"waiting";
   return"idle";
 }
 
@@ -483,11 +483,16 @@ function wireGateControls(state,stage){
     await loadStageState(project);
     await loadRuntimeHistory(project);
     renderWorkspace();
-    output.textContent=
-      "APPLIED · "+decision+
-      " · evidence "+(result.evidence?.evidence_id||"—")+
-      " · tracked state changed · Git commit required";
-    output.className="gateOutput ok";
+    renderProjects();
+    const refreshed=byId("gateOutput");
+    if(refreshed){
+      refreshed.textContent=
+        "APPLIED · "+decision+
+        " · evidence "+(result.evidence?.evidence_id||"—")+
+        " · current stage "+(result.lifecycle?.current_stage||"—")+
+        " · tracked state changed · Git commit required";
+      refreshed.className="gateOutput ok";
+    }
   };
 }
 
