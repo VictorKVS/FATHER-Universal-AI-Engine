@@ -65,7 +65,8 @@ const project=function(id){return model.registry.projects.find(function(x){retur
 const branch=function(p){return model.git.branches&&model.git.branches.find(function(x){return x.branch===p.branch})};
 const unpack=function(x){return{id:x[0],short:x[1],name:x[2],status:x[3],owner:x[4],gate:x[5],done:x[6],total:x[7],risks:x[8],cost:x[9],analysis:x[10],docs:x[11]||[],decisions:x[12]||[],history:x[13]||[],lessons:x[14]||[]}};
 async function readJson(path,fallback){try{const r=await fetch(path,{cache:"no-store"});if(!r.ok)throw new Error("http");return await r.json()}catch(e){return fallback}}
-async function load(){model.registry=await readJson("../../projects/registry.json",fallbackRegistry);model.git=await readJson("../../docs/git/current_workspace.snapshot.json",fallbackGit);model.providers=await readJson("../../config/dev_platform/providers.json",fallbackProviders);byId("snapshot").textContent=model.git.snapshot_kind==="POINT_IN_TIME"?"Dev Platform snapshot":"prototype fallback";render()}
+async function readFirst(paths,fallback){for(const path of paths){try{const r=await fetch(path,{cache:"no-store"});if(r.ok)return await r.json()}catch(e){}}return fallback}
+async function load(){model.registry=await readFirst(["/api/projects","../../projects/registry.json"],fallbackRegistry);model.git=await readFirst(["/api/git-snapshot","../../docs/git/current_workspace.snapshot.json"],fallbackGit);model.providers=await readFirst(["/api/providers","../../config/dev_platform/providers.json"],fallbackProviders);byId("snapshot").textContent=model.git.snapshot_kind==="POINT_IN_TIME"?"Dev Platform snapshot":"prototype fallback";render()}
 function mini(a,b){return'<div class="mini"><span>'+esc(a)+'</span><b>'+esc(b||"—")+'</b></div>'}
 function render(){renderProjects();renderWorkspace();renderGitMap();renderProviderMatrix()}
 function renderProjects(){const host=byId("projects");host.innerHTML="";model.registry.projects.forEach(function(p){const b=branch(p),card=document.createElement("article");card.className="project"+(p.project_id===selectedProject?" selected":"");card.innerHTML='<div class="projectHead"><div><h3>'+esc(p.name)+'</h3><div class="id">'+esc(p.project_id)+'</div></div><span class="chip '+stateClass(p.status)+'">'+esc(p.status)+'</span></div><div class="miniGrid">'+mini("Stage",p.current_stage)+mini("Product Gate",p.product_gate)+mini("Security",p.security_gate)+mini("Git",b?b.relation_to_main:"NO SNAPSHOT")+'</div>';card.onclick=function(){selectedProject=p.project_id;selectedStage=stages[p.project_id].current;activeTab="overview";render()};host.appendChild(card)})}
@@ -118,13 +119,17 @@ function renderScmActions(p,d,b){
     result.className="actionResult ok";
   }
   byId("scmActions").querySelectorAll("button:not(:disabled)").forEach(function(btn){
-    btn.onclick=function(){
-      const id="ACT-"+Date.now();
-      result.textContent=id+" · "+btn.dataset.action+" · DRAFT. No provider mutation executed in browser.";
-      result.className="actionResult ok";
+    btn.onclick=async function(){
+      result.textContent="Planning "+btn.dataset.action+"…";
+      result.className="actionResult";
+      const plan=await planProviderAction(p.project_id,btn.dataset.action);
+      const reasons=(plan.reasons||[]).join(", ");
+      result.textContent=plan.action_id+" · "+plan.action+" · "+plan.status+(reasons?" · "+reasons:"")+" · provider mutation: "+(plan.provider_mutation?"YES":"NO");
+      result.className="actionResult "+(plan.allowed?"ok":"block");
     };
   });
 }
+async function planProviderAction(projectId,action){try{const r=await fetch("/api/actions/plan",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({project_id:projectId,action:action})});if(r.ok)return await r.json()}catch(e){}return{action_id:"ACT-LOCAL-"+Date.now(),project_id:projectId,action:action,status:"DRAFT",allowed:true,reasons:["CONTROL_PLANE_API_UNAVAILABLE"],provider_mutation:false}}
 function renderChecks(d){byId("checks").innerHTML=d.checks.map(function(x){return'<div class="check"><span>'+esc(x[0])+'</span><span class="pill '+esc(x[1])+'">'+esc(x[1])+'</span></div>'}).join("")}
 function renderGitMap(){const bs=model.git.branches||[],main=bs.find(function(x){return x.branch===model.git.default_branch})||bs[0],features=bs.filter(function(x){return x.branch!==main.branch});byId("gitMap").innerHTML='<div class="mainBranch"><em>DEFAULT</em><h3>'+esc(main.branch)+'</h3><div class="note">'+esc(model.git.repository||"repository")+'</div></div><div class="branchStack">'+features.map(function(b){return'<div class="branchCard"><div class="branchCardHead"><b>'+esc(b.branch)+'</b><span class="pill '+(b.relation_to_main==="DIVERGED"?"FAIL":"IN_PROGRESS")+'">'+esc(b.relation_to_main||"UNKNOWN")+'</span></div><small>project: '+esc(b.linked_project||"unlinked")+' · ahead '+(b.ahead_by||0)+' · behind '+(b.behind_by||0)+' · change request '+(b.open_pull_request?"open":"none")+'</small></div>'}).join("")+'</div>'}
 function renderProviderMatrix(){const p=project(selectedProject)||{};const dp=p.dev_platform||{};const primary=dp.primary_provider||"github";const targets=new Set(dp.migration_targets||[]);byId("providerMatrix").innerHTML=(model.providers.providers||[]).map(function(x){const role=x.id===primary?"PRIMARY":targets.has(x.id)?"MIGRATION TARGET":"AVAILABLE";return'<div class="providerCard '+(x.id===primary?"primary":"")+'"><div class="providerCardHead"><h4>'+esc(x.name)+'</h4><span class="pill '+(x.status==="CONNECTED"?"PASS":"DRAFT")+'">'+esc(x.status)+'</span></div><small>adapter: '+esc(x.adapter_status||"TBD")+'</small><div class="providerCaps">'+(x.capabilities||[]).slice(0,5).map(function(c){return"<span>"+esc(c)+"</span>"}).join("")+'</div><div class="providerRole">'+role+'</div></div>'}).join("")}
