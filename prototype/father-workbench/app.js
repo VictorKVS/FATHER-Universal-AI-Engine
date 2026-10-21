@@ -351,11 +351,83 @@ function overviewHtml(stage){
   '<div class="gateControl">'+
     '<div><em>GATE ENGINE</em><div class="gateHint">Mechanical checks never auto-PASS a stage.</div></div>'+
     '<div class="gateButtons">'+
+      (stage.status==="READY"
+        ?'<button class="gateBtn" data-stage-action="start">Start Stage</button>'
+        :'')+
       '<button class="gateBtn" data-gate-action="recalculate">Recalculate Gate</button>'+
       '<button class="gateBtn" data-gate-action="decide">Human Gate Decision</button>'+
     '</div>'+
     '<div class="gateOutput" id="gateOutput">No gate recalculation in this session.</div>'+
   '</div>';
+}
+
+async function submitStageStart(projectId,payload){
+  try{
+    const response=await fetch("/api/stages/start",{
+      method:"POST",
+      headers:{
+        "Content-Type":"application/json",
+        "X-FATHER-Action":"confirm"
+      },
+      body:JSON.stringify({
+        project_id:projectId,
+        confirm:true,
+        ...payload
+      })
+    });
+    const body=await response.json().catch(()=>({}));
+    return{http_status:response.status,...body};
+  }catch(_error){
+    return{
+      status:"BLOCKED",
+      errors:["CONTROL_PLANE_API_UNAVAILABLE"]
+    };
+  }
+}
+
+async function handleStageStart(state,stage){
+  if(stage.status!=="READY")return;
+  const rationale=(window.prompt(
+    "Why is this stage starting now? (required)",
+    ""
+  )||"").trim();
+  if(!rationale)return;
+
+  const evaluation=await recalculateGate(selectedProject,stage.id);
+  const expectedEtag=evaluation.state_etag;
+  if(!expectedEtag){
+    window.alert("Cannot start stage: state ETag unavailable.");
+    return;
+  }
+
+  const confirmed=window.confirm(
+    "Start "+stage.id+" · "+stage.name+
+    "? READY will become IN_PROGRESS and the decision will be recorded."
+  );
+  if(!confirmed)return;
+
+  const result=await submitStageStart(
+    selectedProject,
+    {
+      stage_id:stage.id,
+      rationale,
+      started_by:"HUMAN_LOCAL_OPERATOR",
+      expected_etag:expectedEtag
+    }
+  );
+  if(result.status!=="STARTED"){
+    window.alert(
+      (result.status||"BLOCKED")+": "+
+      (result.errors||["UNKNOWN_ERROR"]).join(", ")
+    );
+    return;
+  }
+
+  const project=projectById(selectedProject);
+  await loadStageState(project);
+  await loadRuntimeHistory(project);
+  renderWorkspace();
+  renderProjects();
 }
 
 async function recalculateGate(projectId,stageId){
@@ -408,7 +480,9 @@ function wireGateControls(state,stage){
   const output=byId("gateOutput");
   const recalc=document.querySelector('[data-gate-action="recalculate"]');
   const decide=document.querySelector('[data-gate-action="decide"]');
+  const start=document.querySelector('[data-stage-action="start"]');
   if(!output||!recalc||!decide)return;
+  if(start)start.onclick=()=>handleStageStart(state,stage);
 
   let lastEvaluation=null;
 
