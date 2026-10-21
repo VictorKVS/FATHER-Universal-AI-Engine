@@ -171,11 +171,32 @@ class ProviderBindingStore:
             "approval_id": approval_id,
             "verification_refs": dict(verification_refs),
         }
-        state["targets"] = [
+        remaining_targets = [
             item
             for item in targets
             if item.get("provider") != target_provider
         ]
+        rollback_target = {
+            "provider": current_primary.get("provider"),
+            "repository": current_primary.get("repository"),
+            "branch": current_primary.get("branch"),
+            "status": "ROLLBACK_CANDIDATE",
+            "became_rollback_candidate_at": switched_at,
+            "switched_to": target_provider,
+            "approval_id": approval_id,
+        }
+        if all(
+            rollback_target.get(key)
+            for key in ("provider", "repository", "branch")
+        ):
+            remaining_targets = [
+                item
+                for item in remaining_targets
+                if item.get("provider") != rollback_target["provider"]
+            ]
+            remaining_targets.append(rollback_target)
+
+        state["targets"] = remaining_targets
         state["historical"] = historical
         state["last_switch"] = {
             "from_provider": current_primary.get("provider"),

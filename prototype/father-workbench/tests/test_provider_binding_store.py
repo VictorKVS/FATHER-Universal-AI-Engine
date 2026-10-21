@@ -125,7 +125,15 @@ class ProviderBindingStoreTests(unittest.TestCase):
             self.assertNotEqual(target_etag, new_etag)
             self.assertEqual(switched["primary"]["provider"], "gitlab")
             self.assertEqual(switched["primary"]["repository"], "group/repo")
-            self.assertEqual(switched["targets"], [])
+            self.assertEqual(len(switched["targets"]), 1)
+            self.assertEqual(
+                switched["targets"][0]["provider"],
+                "github",
+            )
+            self.assertEqual(
+                switched["targets"][0]["status"],
+                "ROLLBACK_CANDIDATE",
+            )
             self.assertEqual(historical["provider"], "github")
             self.assertEqual(switched["historical"][-1]["provider"], "github")
             self.assertEqual(

@@ -174,3 +174,21 @@ Current audited/reconciled actions:
 - `SCM.OPEN_CHANGE_REQUEST`
 
 Azure Pipelines is intentionally treated as a separate capability from Azure Repos and is not inferred as green from repository state.
+
+
+## Provider rollback model
+
+A successful cutover never deletes or decommissions the previous primary provider.
+
+FATHER records the previous binding in immutable history and also re-registers it as a tracked `ROLLBACK_CANDIDATE`. Returning to it is **not** a bypass path: the previous provider must pass the same current migration verification, security review and cutover approval flow before it can become primary again.
+
+```text
+PRIMARY A
+→ verified cutover
+→ PRIMARY B
+→ A becomes ROLLBACK_CANDIDATE
+→ verify B ⇄ A
+→ security review
+→ cutover approval
+→ optional switch back to A
+```
