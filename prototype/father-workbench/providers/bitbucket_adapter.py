@@ -158,6 +158,61 @@ class BitbucketAdapter:
             "updated_at": value.get("completed_on"),
         }
 
+    def ref_inventory(self, repository: str) -> dict[str, Any]:
+        workspace, repo_slug = self.split_repository(repository)
+        root = (
+            f"/repositories/{quote(workspace, safe='')}/"
+            f"{quote(repo_slug, safe='')}"
+        )
+        repo = self._request(root)
+        branches: dict[str, str] = {}
+        tags: dict[str, str] = {}
+        limitations: list[str] = []
+
+        for page in range(1, 101):
+            data = self._request(
+                f"{root}/refs/branches",
+                {"pagelen": "100", "page": str(page)},
+            )
+            if not isinstance(data, dict):
+                raise ProviderError("Bitbucket branch inventory invalid")
+            values = data.get("values", [])
+            for item in values:
+                sha = self._branch_sha(item)
+                if item.get("name") and sha:
+                    branches[str(item["name"])] = str(sha)
+            if not data.get("next"):
+                break
+        else:
+            limitations.append("BRANCH_PAGINATION_LIMIT_REACHED")
+
+        for page in range(1, 101):
+            data = self._request(
+                f"{root}/refs/tags",
+                {"pagelen": "100", "page": str(page)},
+            )
+            if not isinstance(data, dict):
+                raise ProviderError("Bitbucket tag inventory invalid")
+            values = data.get("values", [])
+            for item in values:
+                sha = (item.get("target") or {}).get("hash")
+                if item.get("name") and sha:
+                    tags[str(item["name"])] = str(sha)
+            if not data.get("next"):
+                break
+        else:
+            limitations.append("TAG_PAGINATION_LIMIT_REACHED")
+
+        return {
+            "provider": self.provider_id,
+            "repository": repo.get("full_name", repository),
+            "default_branch": (repo.get("mainbranch") or {}).get("name"),
+            "branches": branches,
+            "tags": tags,
+            "complete": not limitations,
+            "limitations": limitations,
+        }
+
     def live_state(
         self,
         repository: str,

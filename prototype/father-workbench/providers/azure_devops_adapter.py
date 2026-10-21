@@ -184,6 +184,46 @@ class AzureDevOpsAdapter:
                 return item
         raise ProviderError(f"Azure DevOps branch not found: {branch}")
 
+    def ref_inventory(self, repository: str) -> dict[str, Any]:
+        _org, _project, _repo_name, root = self._root(repository)
+        repo = self._request(root)
+        branches_data = self._request(
+            f"{root}/refs",
+            {"filter": "heads/", "$top": "1000"},
+        )
+        tags_data = self._request(
+            f"{root}/refs",
+            {"filter": "tags/", "$top": "1000"},
+        )
+        branch_values = self._refs_value(branches_data)
+        tag_values = self._refs_value(tags_data)
+        branches = {
+            str(item["name"]).removeprefix("refs/heads/"): str(item["objectId"])
+            for item in branch_values
+            if item.get("name") and item.get("objectId")
+        }
+        tags = {
+            str(item["name"]).removeprefix("refs/tags/"): str(item["objectId"])
+            for item in tag_values
+            if item.get("name") and item.get("objectId")
+        }
+        limitations: list[str] = []
+        if len(branch_values) >= 1000:
+            limitations.append("BRANCH_INVENTORY_MAY_BE_TRUNCATED")
+        if len(tag_values) >= 1000:
+            limitations.append("TAG_INVENTORY_MAY_BE_TRUNCATED")
+        return {
+            "provider": self.provider_id,
+            "repository": repository,
+            "default_branch": str(
+                repo.get("defaultBranch") or ""
+            ).removeprefix("refs/heads/") or None,
+            "branches": branches,
+            "tags": tags,
+            "complete": not limitations,
+            "limitations": limitations,
+        }
+
     def live_state(
         self,
         repository: str,

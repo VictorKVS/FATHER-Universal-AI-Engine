@@ -248,6 +248,56 @@ class GitLabAdapter:
             "updated_at": value.get("updated_at"),
         }
 
+    def ref_inventory(self, repository: str) -> dict[str, Any]:
+        project_path = self.project_path(repository)
+        encoded_project = quote(project_path, safe="")
+        project = self._request(f"/projects/{encoded_project}")
+        branches: dict[str, str] = {}
+        tags: dict[str, str] = {}
+        limitations: list[str] = []
+
+        for page in range(1, 101):
+            items = self._request(
+                f"/projects/{encoded_project}/repository/branches",
+                {"per_page": "100", "page": str(page)},
+            )
+            if not isinstance(items, list):
+                raise ProviderError("GitLab branch inventory invalid")
+            for item in items:
+                sha = (item.get("commit") or {}).get("id")
+                if item.get("name") and sha:
+                    branches[str(item["name"])] = str(sha)
+            if len(items) < 100:
+                break
+        else:
+            limitations.append("BRANCH_PAGINATION_LIMIT_REACHED")
+
+        for page in range(1, 101):
+            items = self._request(
+                f"/projects/{encoded_project}/repository/tags",
+                {"per_page": "100", "page": str(page)},
+            )
+            if not isinstance(items, list):
+                raise ProviderError("GitLab tag inventory invalid")
+            for item in items:
+                sha = (item.get("commit") or {}).get("id")
+                if item.get("name") and sha:
+                    tags[str(item["name"])] = str(sha)
+            if len(items) < 100:
+                break
+        else:
+            limitations.append("TAG_PAGINATION_LIMIT_REACHED")
+
+        return {
+            "provider": self.provider_id,
+            "repository": project.get("path_with_namespace", repository),
+            "default_branch": project.get("default_branch"),
+            "branches": branches,
+            "tags": tags,
+            "complete": not limitations,
+            "limitations": limitations,
+        }
+
     def live_state(
         self,
         repository: str,

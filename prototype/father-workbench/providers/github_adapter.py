@@ -247,6 +247,56 @@ class GitHubAdapter:
             "updated_at": value.get("updated_at"),
         }
 
+    def ref_inventory(self, repository: str) -> dict[str, Any]:
+        owner, name = self.split_repository(repository)
+        repo_path = f"/repos/{quote(owner, safe='')}/{quote(name, safe='')}"
+        repo = self._request(repo_path)
+        branches: dict[str, str] = {}
+        tags: dict[str, str] = {}
+        limitations: list[str] = []
+
+        for page in range(1, 101):
+            items = self._request(
+                f"{repo_path}/branches",
+                {"per_page": "100", "page": str(page)},
+            )
+            if not isinstance(items, list):
+                raise ProviderError("GitHub branch inventory invalid")
+            for item in items:
+                sha = (item.get("commit") or {}).get("sha")
+                if item.get("name") and sha:
+                    branches[str(item["name"])] = str(sha)
+            if len(items) < 100:
+                break
+        else:
+            limitations.append("BRANCH_PAGINATION_LIMIT_REACHED")
+
+        for page in range(1, 101):
+            items = self._request(
+                f"{repo_path}/tags",
+                {"per_page": "100", "page": str(page)},
+            )
+            if not isinstance(items, list):
+                raise ProviderError("GitHub tag inventory invalid")
+            for item in items:
+                sha = (item.get("commit") or {}).get("sha")
+                if item.get("name") and sha:
+                    tags[str(item["name"])] = str(sha)
+            if len(items) < 100:
+                break
+        else:
+            limitations.append("TAG_PAGINATION_LIMIT_REACHED")
+
+        return {
+            "provider": self.provider_id,
+            "repository": repo.get("full_name", repository),
+            "default_branch": repo.get("default_branch"),
+            "branches": branches,
+            "tags": tags,
+            "complete": not limitations,
+            "limitations": limitations,
+        }
+
     def live_state(
         self,
         repository: str,
