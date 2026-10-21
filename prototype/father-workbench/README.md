@@ -106,3 +106,23 @@ The current GitLab adapter supports live read plus the same limited audited writ
 - `SCM.OPEN_CHANGE_REQUEST`
 
 Merge, delete, release publish and permission/secret changes remain disabled.
+
+
+## Gitea / Forgejo connections
+
+Both adapters use the provider's `/api/v1` repository API and keep credentials server-side.
+
+```powershell
+$env:FATHER_GITEA_URL = "https://gitea.example.com"
+$env:FATHER_GITEA_TOKEN = "<minimum-scope token>"
+
+$env:FATHER_FORGEJO_URL = "https://forgejo.example.com"
+$env:FATHER_FORGEJO_TOKEN = "<minimum-scope token>"
+```
+
+Current audited/reconciled writes for both providers:
+
+- `SCM.CREATE_BRANCH`
+- `SCM.OPEN_CHANGE_REQUEST`
+
+FATHER currently opens a normal PR for Gitea/Forgejo; draft mode is not advertised until its exact provider contract is enabled and tested.

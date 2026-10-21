@@ -135,26 +135,38 @@
       "name": "Forgejo",
       "family": "FORGEJO",
       "status": "AVAILABLE",
-      "adapter_status": "PLANNED",
+      "adapter_status": "IMPLEMENTED_READ_WRITE_LIMITED",
       "capabilities": [
         "REPOSITORIES",
         "PULL_REQUESTS",
         "ISSUES",
         "ACTIONS"
-      ]
+      ],
+      "write_capabilities": [
+        "SCM.CREATE_BRANCH",
+        "SCM.OPEN_CHANGE_REQUEST"
+      ],
+      "draft_change_request_supported": false,
+      "branch_create_status": "VERIFIED_PUBLIC_API"
     },
     {
       "id": "gitea",
       "name": "Gitea",
       "family": "GITEA",
       "status": "AVAILABLE",
-      "adapter_status": "PLANNED",
+      "adapter_status": "IMPLEMENTED_READ_WRITE_LIMITED",
       "capabilities": [
         "REPOSITORIES",
         "PULL_REQUESTS",
         "ISSUES",
         "ACTIONS"
-      ]
+      ],
+      "write_capabilities": [
+        "SCM.CREATE_BRANCH",
+        "SCM.OPEN_CHANGE_REQUEST"
+      ],
+      "draft_change_request_supported": false,
+      "branch_create_status": "VERIFIED_PUBLIC_API"
     }
   ],
   "rules": {
