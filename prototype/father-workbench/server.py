@@ -21,6 +21,7 @@ from urllib.parse import unquote, urlparse
 
 from artifact_engine import apply_artifact_update, list_artifacts, validate_artifact_update
 from devsecops_state import evaluate_devsecops_state
+from evidence_pack import EvidencePackStore, build_evidence_pack
 from evidence_store import EvidenceStore
 from gate_engine import (
     apply_gate_decision,
@@ -48,6 +49,7 @@ STAGE_FLOW_FILE = REPO_ROOT / "config" / "lifecycle" / "project_stage_flow.json"
 RUNTIME_DIR = APP_DIR / "runtime"
 AUDIT_FILE = RUNTIME_DIR / "scm-actions.jsonl"
 EVIDENCE_STORE = EvidenceStore(RUNTIME_DIR)
+EVIDENCE_PACK_STORE = EvidencePackStore(REPO_ROOT)
 PROJECT_STATE_STORE = ProjectStateStore(REPO_ROOT)
 
 MAX_JSON_BODY = 16 * 1024
@@ -536,6 +538,77 @@ def project_traceability(project: dict[str, Any]) -> dict[str, Any]:
     )
 
 
+def export_project_evidence_pack(project_id: str) -> dict[str, Any]:
+    project = project_by_id(project_id)
+    if not project:
+        return {
+            "status": "BLOCKED",
+            "errors": ["PROJECT_NOT_FOUND"],
+        }
+
+    state = project_stage_state(project)
+    evidence_index = EVIDENCE_STORE.list_evidence(project_id, limit=200)
+    events = EVIDENCE_STORE.list_manufacturing_events(project_id, limit=200)
+    try:
+        live = live_provider_state(project)
+    except (ProviderError, NotImplementedError, ValueError):
+        live = None
+
+    devsecops = evaluate_devsecops_state(live)
+    traceability = build_traceability_graph(
+        project=project,
+        state=state,
+        evidence=evidence_index,
+        events=events,
+        live=live,
+    )
+    pack = build_evidence_pack(
+        project=project,
+        state=state,
+        live=live,
+        devsecops=devsecops,
+        traceability=traceability,
+        evidence_index=evidence_index,
+        manufacturing_events=events,
+    )
+    exported = EVIDENCE_PACK_STORE.export(pack)
+
+    event = EVIDENCE_STORE.append_manufacturing_event(
+        project_id=project_id,
+        event_type="EVIDENCE_PACK_EXPORTED",
+        source_ref=pack["evidence_pack_id"],
+        payload={
+            "evidence_pack_id": pack["evidence_pack_id"],
+            "pack_status": pack["pack_status"],
+            "head_sha": pack["head_sha"],
+            "path": exported["path"],
+            "content_sha256": pack["content_sha256"],
+        },
+    )
+    runtime_evidence = EVIDENCE_STORE.store_evidence(
+        project_id=project_id,
+        evidence_type="PROJECT_EVIDENCE_PACK_EXPORT",
+        provider=(live or {}).get("provider"),
+        payload={
+            "evidence_pack_id": pack["evidence_pack_id"],
+            "pack_status": pack["pack_status"],
+            "head_sha": pack["head_sha"],
+            "path": exported["path"],
+            "content_sha256": pack["content_sha256"],
+        },
+        subject_key=pack["evidence_pack_id"],
+        refs={"manufacturing_event_id": event["event_id"]},
+    )
+    return {
+        "status": "EXPORTED",
+        "pack": pack,
+        "export": exported,
+        "runtime_evidence": runtime_evidence,
+        "manufacturing_event_id": event["event_id"],
+        "git_commit_required": True,
+    }
+
+
 def write_audit_event(event: dict[str, Any]) -> None:
     RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
     with AUDIT_FILE.open("a", encoding="utf-8") as handle:
@@ -915,6 +988,7 @@ class FatherHandler(BaseHTTPRequestHandler):
                         "atomic_project_state": True,
                         "artifact_control": True,
                         "traceability_graph": True,
+                        "durable_evidence_pack": True,
                     }
                 )
                 return
@@ -994,6 +1068,16 @@ class FatherHandler(BaseHTTPRequestHandler):
                 if len(parts) == 4 and parts[3] == "traceability":
                     self._json(project_traceability(project))
                     return
+
+                if len(parts) == 4 and parts[3] == "evidence-packs":
+                    self._json(
+                        {
+                            "project_id": project_id,
+                            "packs": EVIDENCE_PACK_STORE.list(project_id),
+                        }
+                    )
+                    return
+
 
                 if len(parts) == 4 and parts[3] == "stages":
                     self._json(project_stage_state(project))
@@ -1109,6 +1193,7 @@ class FatherHandler(BaseHTTPRequestHandler):
             "/api/gates/recalculate",
             "/api/gates/decide",
             "/api/artifacts/upsert",
+            "/api/evidence/export",
         }:
             self._error_json(HTTPStatus.NOT_FOUND, "ENDPOINT_NOT_FOUND")
             return
@@ -1203,6 +1288,33 @@ class FatherHandler(BaseHTTPRequestHandler):
             if result["status"] == "CONFLICT":
                 self._json(result, HTTPStatus.CONFLICT)
             elif result["status"] == "BLOCKED":
+                self._json(result, HTTPStatus.BAD_REQUEST)
+            else:
+                self._json(result)
+            return
+
+        if path == "/api/evidence/export":
+            if self.headers.get("X-FATHER-Action") != "confirm":
+                self._error_json(
+                    HTTPStatus.FORBIDDEN,
+                    "EXPLICIT_ACTION_HEADER_REQUIRED",
+                )
+                return
+            if body.get("confirm") is not True:
+                self._error_json(
+                    HTTPStatus.FORBIDDEN,
+                    "EXPLICIT_CONFIRMATION_REQUIRED",
+                )
+                return
+            try:
+                result = export_project_evidence_pack(project_id)
+            except OSError:
+                self._error_json(
+                    HTTPStatus.INTERNAL_SERVER_ERROR,
+                    "EVIDENCE_PACK_EXPORT_FAILED",
+                )
+                return
+            if result["status"] == "BLOCKED":
                 self._json(result, HTTPStatus.BAD_REQUEST)
             else:
                 self._json(result)
