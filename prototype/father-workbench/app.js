@@ -58,7 +58,7 @@ async function load(){model.registry=await readJson("../../projects/registry.jso
 function mini(a,b){return'<div class="mini"><span>'+esc(a)+'</span><b>'+esc(b||"—")+'</b></div>'}
 function render(){renderProjects();renderWorkspace();renderGitMap()}
 function renderProjects(){const host=byId("projects");host.innerHTML="";model.registry.projects.forEach(function(p){const b=branch(p),card=document.createElement("article");card.className="project"+(p.project_id===selectedProject?" selected":"");card.innerHTML='<div class="projectHead"><div><h3>'+esc(p.name)+'</h3><div class="id">'+esc(p.project_id)+'</div></div><span class="chip '+stateClass(p.status)+'">'+esc(p.status)+'</span></div><div class="miniGrid">'+mini("Stage",p.current_stage)+mini("Product Gate",p.product_gate)+mini("Security",p.security_gate)+mini("Git",b?b.relation_to_main:"NO SNAPSHOT")+'</div>';card.onclick=function(){selectedProject=p.project_id;selectedStage=stages[p.project_id].current;activeTab="overview";render()};host.appendChild(card)})}
-function renderWorkspace(){const p=project(selectedProject),d=stages[selectedProject],b=branch(p);if(!p||!d)return;byId("projectId").textContent=p.project_id;byId("projectName").textContent=p.name;byId("projectDescription").textContent=d.description;byId("projectStatus").textContent=p.status;byId("projectStatus").className="chip "+stateClass(p.status);byId("projectBranch").textContent=p.branch||"branch TBD";renderKpis(p,d,b);renderConveyor(d);renderInspector(d);renderScorecards(d);renderGitPanel(p,b);renderChecks(d)}
+function renderWorkspace(){const p=project(selectedProject),d=stages[selectedProject],b=branch(p);if(!p||!d)return;byId("projectId").textContent=p.project_id;byId("projectName").textContent=p.name;byId("projectDescription").textContent=d.description;byId("projectStatus").textContent=p.status;byId("projectStatus").className="chip "+stateClass(p.status);byId("projectBranch").textContent=p.branch||"branch TBD";renderKpis(p,d,b);renderConveyor(d);renderInspector(d);renderScorecards(d);renderGitPanel(p,b);renderScmActions(p,d,b);renderChecks(d)}
 function renderKpis(p,d,b){const vals=[["Product Gate",p.product_gate,"PM decision"],["Security Gate",p.security_gate,"InfoSec + DevSecOps"],["Documents",d.docs[0]+" / "+d.docs[1],"pre-design pack"],["Evidence",d.evidence,"no evidence → no pass"],["Git",b?b.relation_to_main:"NO SNAPSHOT",b?("+"+(b.ahead_by||0)+" / -"+(b.behind_by||0)):"external / TBD"]];byId("kpis").innerHTML=vals.map(function(x){return'<div class="kpi"><span>'+esc(x[0])+'</span><b>'+esc(x[1])+'</b><small>'+esc(x[2])+'</small></div>'}).join("")}
 function renderConveyor(d){const host=byId("conveyor");host.innerHTML="";d.items.map(unpack).forEach(function(s){const node=document.createElement("button");node.className="stage "+stateClass(s.status)+(s.id===selectedStage?" active":"");node.innerHTML='<small>'+esc(s.id)+'</small><b>'+esc(s.short)+'</b><i>'+esc(s.status)+'</i><div class="stageMeta"><span>DOCS</span><span>'+s.done+"/"+s.total+'</span></div><div class="stageMeta"><span>GATE</span><span>'+esc(s.gate)+'</span></div>';node.onclick=function(){selectedStage=s.id;activeTab="overview";renderConveyor(d);renderInspector(d)};host.appendChild(node)})}
 function detail(a,b){return'<div class="detail"><span>'+esc(a)+'</span><b>'+esc(b)+'</b></div>'}
@@ -70,6 +70,46 @@ function security(s,d){const relevant=["PD-02","DS-02","ARCH","DEV","QA","OPS"].
 function history(s){const h=s.history.length?'<div class="rows">'+s.history.map(function(x,i){return'<div class="row"><span class="code">EVT-'+(i+1)+'</span><span>'+esc(x)+'</span><span></span></div>'}).join("")+'</div>':'<div class="empty">No stage events yet.</div>';const l=s.lessons.length?'<div class="rows">'+s.lessons.map(function(x,i){return'<div class="row"><span class="code">LESSON-'+(i+1)+'</span><span>'+esc(x)+'</span><span class="pill DRAFT">OBSERVED</span></div>'}).join("")+'</div>':'<div class="empty">No lessons yet.</div>';return'<em>HISTORY</em>'+h+'<div style="height:13px"></div><em>LESSONS LEARNED</em>'+l}
 function renderScorecards(d){byId("scorecards").innerHTML=Object.entries(d.score).map(function(x){return'<div class="scoreRow"><span>'+esc(x[0])+'</span><div class="meter"><i style="width:'+x[1]+'%"></i></div><b>'+x[1]+'%</b></div>'}).join("")}
 function renderGitPanel(p,b){if(!b){byId("gitPanel").innerHTML='<div class="branch">'+esc(p.branch||"No branch")+'</div><div class="warn" style="margin-top:10px">Live Git snapshot for this external repository was not refreshed.</div>';return}const warning=b.relation_to_main==="DIVERGED"?"Ветка впереди и позади main. Это не FAIL, но evidence/merge-readiness требуют актуализации.":"Ветка не отстаёт от main в текущем snapshot.";byId("gitPanel").innerHTML='<div class="branch">'+esc(b.branch)+'</div><div class="gitStats"><div><span>STATE</span><b>'+esc(b.relation_to_main)+'</b></div><div><span>AHEAD</span><b>'+(b.ahead_by||0)+'</b></div><div><span>BEHIND</span><b>'+(b.behind_by||0)+'</b></div></div><div class="warn">'+esc(warning)+'</div>'}
+function renderScmActions(p,d,b){
+  const checks=d.checks||[];
+  const required=["SAST","SCA","Secret scan","Security review"];
+  const missing=required.filter(function(name){
+    const hit=checks.find(function(x){return x[0]===name});
+    return !hit || hit[1]!=="PASS";
+  });
+  const mergeBlocked=(p.security_gate!=="PASS") || missing.length>0 || !b || b.relation_to_main==="DIVERGED";
+  const actions=[
+    ["Create branch",false,"SCM.CREATE_BRANCH"],
+    ["Open PR",false,"SCM.OPEN_CHANGE_REQUEST"],
+    ["Request review",false,"SCM.REQUEST_REVIEW"],
+    ["Run checks",false,"SCM.TRIGGER_PIPELINE"],
+    ["Release draft",false,"SCM.CREATE_RELEASE_DRAFT"],
+    ["Merge",mergeBlocked,"SCM.MERGE_CHANGE_REQUEST"]
+  ];
+  byId("scmActions").innerHTML=actions.map(function(a){
+    return '<button class="scmBtn '+(a[0]==="Merge"?"danger":"")+'" data-action="'+a[2]+'" '+(a[1]?"disabled":"")+'>'+esc(a[0])+'<br><span class="code">'+esc(a[2])+'</span></button>';
+  }).join("");
+  const result=byId("actionResult");
+  if(mergeBlocked){
+    const reasons=[];
+    if(p.security_gate!=="PASS")reasons.push("Security Gate != PASS");
+    if(missing.length)reasons.push("missing checks: "+missing.join(", "));
+    if(!b)reasons.push("Git snapshot unavailable");
+    if(b&&b.relation_to_main==="DIVERGED")reasons.push("branch diverged");
+    result.textContent="Merge BLOCKED · "+reasons.join(" · ");
+    result.className="actionResult block";
+  } else {
+    result.textContent="Merge policy prerequisites satisfied in prototype snapshot. Explicit approval is still required.";
+    result.className="actionResult ok";
+  }
+  byId("scmActions").querySelectorAll("button:not(:disabled)").forEach(function(btn){
+    btn.onclick=function(){
+      const id="ACT-"+Date.now();
+      result.textContent=id+" · "+btn.dataset.action+" · DRAFT. No provider mutation executed in browser.";
+      result.className="actionResult ok";
+    };
+  });
+}
 function renderChecks(d){byId("checks").innerHTML=d.checks.map(function(x){return'<div class="check"><span>'+esc(x[0])+'</span><span class="pill '+esc(x[1])+'">'+esc(x[1])+'</span></div>'}).join("")}
 function renderGitMap(){const bs=model.git.branches||[],main=bs.find(function(x){return x.branch===model.git.default_branch})||bs[0],features=bs.filter(function(x){return x.branch!==main.branch});byId("gitMap").innerHTML='<div class="mainBranch"><em>DEFAULT</em><h3>'+esc(main.branch)+'</h3><div class="note">'+esc(model.git.repository||"repository")+'</div></div><div class="branchStack">'+features.map(function(b){return'<div class="branchCard"><div class="branchCardHead"><b>'+esc(b.branch)+'</b><span class="pill '+(b.relation_to_main==="DIVERGED"?"FAIL":"IN_PROGRESS")+'">'+esc(b.relation_to_main||"UNKNOWN")+'</span></div><small>project: '+esc(b.linked_project||"unlinked")+' · ahead '+(b.ahead_by||0)+' · behind '+(b.behind_by||0)+' · PR '+(b.open_pull_request?"open":"none")+'</small></div>'}).join("")+'</div>'}
 byId("refresh").onclick=load;load();
