@@ -48,7 +48,8 @@
           "gitflic"
         ],
         "provider_registry_ref": "config/dev_platform/providers.json"
-      }
+      },
+      "stage_state_ref": "projects/state/FATHER-ACADEMY-OSINT-001.stages.json"
     },
     {
       "project_id": "LIFE-001",
@@ -92,7 +93,8 @@
           "gitflic"
         ],
         "provider_registry_ref": "config/dev_platform/providers.json"
-      }
+      },
+      "stage_state_ref": "projects/state/LIFE-001.stages.json"
     }
   ]
 }

@@ -1,0 +1,404 @@
+{
+  "schema_version": "father.project_stage_state.v0.1",
+  "project_id": "FATHER-ACADEMY-OSINT-001",
+  "projection_kind": "CURRENT_STATE",
+  "source_of_truth_note": "Projection only. Source documents, gate artifacts and Manufacturing KB remain authoritative.",
+  "description": "Фабрика профессиональной подготовки агентов. Первый профиль — OSINT Specialist; обучение подтверждается evidence и независимой evaluation.",
+  "current_stage": "PD-02",
+  "document_summary": {
+    "done": 8,
+    "total": 36
+  },
+  "evidence_status": "PARTIAL",
+  "scorecards": {
+    "Documents": 22,
+    "Evidence": 28,
+    "Security": 18,
+    "DevSecOps": 12
+  },
+  "checks": [
+    {
+      "name": "Git binding",
+      "status": "PASS"
+    },
+    {
+      "name": "Unit / integration tests",
+      "status": "NOT_RUN"
+    },
+    {
+      "name": "SAST",
+      "status": "NOT_RUN"
+    },
+    {
+      "name": "SCA",
+      "status": "NOT_RUN"
+    },
+    {
+      "name": "Secret scan",
+      "status": "NOT_RUN"
+    },
+    {
+      "name": "License scan",
+      "status": "NOT_RUN"
+    },
+    {
+      "name": "SBOM",
+      "status": "NOT_RUN"
+    },
+    {
+      "name": "Security review",
+      "status": "IN_PROGRESS"
+    }
+  ],
+  "stages": [
+    {
+      "id": "PD-00",
+      "short": "IDEA",
+      "name": "Idea Intake",
+      "status": "PASS",
+      "owner": "Product",
+      "gate": "PASS",
+      "documents": {
+        "done": 1,
+        "total": 1,
+        "items": [
+          {
+            "id": "PD-001",
+            "title": "Idea Card",
+            "status": "PASS"
+          }
+        ]
+      },
+      "open_risks": 0,
+      "cost_impact": "—",
+      "analysis": "Идея зарегистрирована как FATHER-проект. Архитектурные предложения исходного ТЗ сохранены как PROPOSED_NOT_APPROVED.",
+      "decisions": [
+        "ALINA OSINT ACADEMY развивается внутри FATHER.",
+        "Первый профиль — OSINT Specialist."
+      ],
+      "history": [
+        "Project registered",
+        "Idea gate passed"
+      ],
+      "lessons": [
+        "Source baseline надо сохранять до нормализации требований."
+      ]
+    },
+    {
+      "id": "PD-01",
+      "short": "PRODUCT",
+      "name": "Product Manager",
+      "status": "PASS",
+      "owner": "Product Manager",
+      "gate": "PASS",
+      "documents": {
+        "done": 5,
+        "total": 5,
+        "items": [
+          {
+            "id": "PD-002",
+            "title": "Product Brief",
+            "status": "PASS"
+          },
+          {
+            "id": "PD-003",
+            "title": "Stakeholder Map",
+            "status": "PASS"
+          },
+          {
+            "id": "PD-004",
+            "title": "Value & Success Metrics",
+            "status": "PASS"
+          },
+          {
+            "id": "PD-005",
+            "title": "Scope & Non-Goals",
+            "status": "PASS"
+          },
+          {
+            "id": "PD-006",
+            "title": "Assumption Register",
+            "status": "PASS"
+          },
+          {
+            "id": "GATE-PD01",
+            "title": "Product Gate",
+            "status": "PASS"
+          }
+        ]
+      },
+      "open_risks": 8,
+      "cost_impact": "TBD",
+      "analysis": "PM сузил задачу до одного доказуемого вертикального цикла обучения: teacher → task → evidence → evaluation → correction → SkillProfile.",
+      "decisions": [
+        "NO EVIDENCE → NO MASTERY.",
+        "Первый MVP не включает SFT/DPO/RL.",
+        "RAG и UI сами по себе не считаются компетентностью."
+      ],
+      "history": [
+        "PD-002..006 created",
+        "GATE-PD01 passed"
+      ],
+      "lessons": [
+        "Узкий vertical slice снижает риск преждевременной платформы.",
+        "Skill change важнее размера базы знаний."
+      ]
+    },
+    {
+      "id": "PD-02",
+      "short": "INFOSEC",
+      "name": "Information Security",
+      "status": "IN_PROGRESS",
+      "owner": "ИБ-специалист",
+      "gate": "NOT_READY",
+      "documents": {
+        "done": 1,
+        "total": 6,
+        "items": [
+          {
+            "id": "PD-007",
+            "title": "Security Context",
+            "status": "DRAFT"
+          },
+          {
+            "id": "PD-008",
+            "title": "Data Classification",
+            "status": "NOT_STARTED"
+          },
+          {
+            "id": "PD-009",
+            "title": "Authority & Action Matrix",
+            "status": "NOT_STARTED"
+          },
+          {
+            "id": "PD-010",
+            "title": "Initial Risk Register",
+            "status": "NOT_STARTED"
+          },
+          {
+            "id": "PD-011",
+            "title": "Security Constraints",
+            "status": "NOT_STARTED"
+          },
+          {
+            "id": "PD-011A",
+            "title": "Security / Compliance Budget",
+            "status": "NOT_STARTED"
+          }
+        ]
+      },
+      "open_risks": 15,
+      "cost_impact": "TBD_BY_SECURITY",
+      "analysis": "Защищается не только информация, но и целостность обучения: student не может менять mastery/evaluation и сам себя сертифицировать.",
+      "decisions": [
+        "External content = untrusted input.",
+        "Student is not trusted by default.",
+        "Secrets excluded from repo/RAG/training data.",
+        "Runtime failure cannot silently become PASS."
+      ],
+      "history": [
+        "Security intake opened",
+        "PD-007 created"
+      ],
+      "lessons": [
+        "SkillProfile и Evaluation — самостоятельные security assets."
+      ]
+    },
+    {
+      "id": "DS-02",
+      "short": "DEVSECOPS",
+      "name": "DevSecOps Security",
+      "status": "WAITING",
+      "owner": "DevSecOps Security",
+      "gate": "WAITING",
+      "documents": {
+        "done": 0,
+        "total": 1,
+        "items": [
+          {
+            "id": "SEC-ENG",
+            "title": "Executable security gates",
+            "status": "NOT_STARTED"
+          }
+        ]
+      },
+      "open_risks": 0,
+      "cost_impact": "TBD_BY_DEVSECOPS",
+      "analysis": "После классификации и authority matrix требования ИБ переводятся в исполняемые CI/CD, supply-chain и runtime checks.",
+      "decisions": [],
+      "history": [],
+      "lessons": []
+    },
+    {
+      "id": "PD-03",
+      "short": "COMPLIANCE",
+      "name": "Legal / Compliance",
+      "status": "NOT_STARTED",
+      "owner": "Compliance",
+      "gate": "NOT_READY",
+      "documents": {
+        "done": 0,
+        "total": 3,
+        "items": []
+      },
+      "open_risks": 0,
+      "cost_impact": "TBD",
+      "analysis": "Применимость определяется после Security Intake.",
+      "decisions": [],
+      "history": [],
+      "lessons": []
+    },
+    {
+      "id": "PD-04",
+      "short": "BA",
+      "name": "Business Analysis",
+      "status": "BLOCKED",
+      "owner": "Business Analyst",
+      "gate": "BLOCKED",
+      "documents": {
+        "done": 0,
+        "total": 6,
+        "items": []
+      },
+      "open_risks": 0,
+      "cost_impact": "—",
+      "analysis": "Заблокировано до Security/Compliance.",
+      "decisions": [],
+      "history": [],
+      "lessons": []
+    },
+    {
+      "id": "PD-05",
+      "short": "SA",
+      "name": "System Analysis",
+      "status": "BLOCKED",
+      "owner": "System Analyst",
+      "gate": "BLOCKED",
+      "documents": {
+        "done": 0,
+        "total": 7,
+        "items": []
+      },
+      "open_risks": 0,
+      "cost_impact": "—",
+      "analysis": "Заблокировано до BA и security constraints.",
+      "decisions": [],
+      "history": [],
+      "lessons": []
+    },
+    {
+      "id": "PD-06",
+      "short": "REQ",
+      "name": "Requirements Baseline",
+      "status": "BLOCKED",
+      "owner": "Requirements",
+      "gate": "BLOCKED",
+      "documents": {
+        "done": 0,
+        "total": 7,
+        "items": []
+      },
+      "open_risks": 0,
+      "cost_impact": "—",
+      "analysis": "Требования после BA/SA.",
+      "decisions": [],
+      "history": [],
+      "lessons": []
+    },
+    {
+      "id": "PD-07",
+      "short": "REVIEW",
+      "name": "Pre-Design Review",
+      "status": "BLOCKED",
+      "owner": "Review Board",
+      "gate": "BLOCKED",
+      "documents": {
+        "done": 0,
+        "total": 2,
+        "items": []
+      },
+      "open_risks": 0,
+      "cost_impact": "—",
+      "analysis": "READY_FOR_ARCHITECTURE пока запрещён.",
+      "decisions": [],
+      "history": [],
+      "lessons": []
+    },
+    {
+      "id": "ARCH",
+      "short": "ARCH",
+      "name": "Architecture",
+      "status": "BLOCKED",
+      "owner": "Architect",
+      "gate": "BLOCKED",
+      "documents": {
+        "done": 0,
+        "total": 0,
+        "items": []
+      },
+      "open_risks": 0,
+      "cost_impact": "—",
+      "analysis": "Architecture starts only after Pre-Design PASS.",
+      "decisions": [],
+      "history": [],
+      "lessons": []
+    },
+    {
+      "id": "DEV",
+      "short": "DEV",
+      "name": "Development",
+      "status": "NOT_STARTED",
+      "owner": "Development",
+      "gate": "NOT_READY",
+      "documents": {
+        "done": 0,
+        "total": 0,
+        "items": []
+      },
+      "open_risks": 0,
+      "cost_impact": "—",
+      "analysis": "Not started.",
+      "decisions": [],
+      "history": [],
+      "lessons": []
+    },
+    {
+      "id": "QA",
+      "short": "QA / EVAL",
+      "name": "QA / Evaluation",
+      "status": "NOT_STARTED",
+      "owner": "QA / Evaluator",
+      "gate": "NOT_READY",
+      "documents": {
+        "done": 0,
+        "total": 0,
+        "items": []
+      },
+      "open_risks": 0,
+      "cost_impact": "—",
+      "analysis": "Not started.",
+      "decisions": [],
+      "history": [],
+      "lessons": []
+    },
+    {
+      "id": "OPS",
+      "short": "OPS",
+      "name": "Operations",
+      "status": "NOT_STARTED",
+      "owner": "SRE / Operations",
+      "gate": "NOT_READY",
+      "documents": {
+        "done": 0,
+        "total": 0,
+        "items": []
+      },
+      "open_risks": 0,
+      "cost_impact": "—",
+      "analysis": "Not started.",
+      "decisions": [],
+      "history": [],
+      "lessons": []
+    }
+  ]
+}

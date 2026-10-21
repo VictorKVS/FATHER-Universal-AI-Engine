@@ -1,0 +1,328 @@
+{
+  "schema_version": "father.project_stage_state.v0.1",
+  "project_id": "LIFE-001",
+  "projection_kind": "CURRENT_STATE",
+  "source_of_truth_note": "Projection only. Source project artifacts remain authoritative.",
+  "description": "Персональный lifelong companion: непрерывность контекста, документов, обязательств и решений на протяжении жизни.",
+  "current_stage": "PD-01",
+  "document_summary": {
+    "done": 3,
+    "total": 36
+  },
+  "evidence_status": "EARLY",
+  "scorecards": {
+    "Documents": 9,
+    "Evidence": 10,
+    "Security": 0,
+    "DevSecOps": 0
+  },
+  "checks": [
+    {
+      "name": "Git binding",
+      "status": "NOT_EVALUATED"
+    },
+    {
+      "name": "Security review",
+      "status": "NOT_RUN"
+    },
+    {
+      "name": "DevSecOps checks",
+      "status": "NOT_RUN"
+    }
+  ],
+  "stages": [
+    {
+      "id": "PD-00",
+      "short": "IDEA",
+      "name": "Idea Intake",
+      "status": "PASS",
+      "owner": "Product",
+      "gate": "PASS",
+      "documents": {
+        "done": 1,
+        "total": 1,
+        "items": [
+          {
+            "id": "PD-001",
+            "title": "Idea Card",
+            "status": "PASS"
+          }
+        ]
+      },
+      "open_risks": 0,
+      "cost_impact": "—",
+      "analysis": "Long-term vision сохранён, но не принят за MVP.",
+      "decisions": [
+        "AGENT ASSISTS / HUMAN DECIDES"
+      ],
+      "history": [
+        "Idea registered"
+      ],
+      "lessons": [
+        "Широкая life vision должна быть отделена от первого slice."
+      ]
+    },
+    {
+      "id": "PD-01",
+      "short": "PRODUCT",
+      "name": "Product Manager",
+      "status": "IN_PROGRESS",
+      "owner": "Product Manager",
+      "gate": "NOT_READY",
+      "documents": {
+        "done": 2,
+        "total": 5,
+        "items": [
+          {
+            "id": "PD-002",
+            "title": "Product Brief",
+            "status": "PASS"
+          },
+          {
+            "id": "PD-003",
+            "title": "Stakeholder Map",
+            "status": "PASS"
+          },
+          {
+            "id": "PD-004",
+            "title": "Value & Success Metrics",
+            "status": "NOT_STARTED"
+          },
+          {
+            "id": "PD-005",
+            "title": "Scope & Non-Goals",
+            "status": "NOT_STARTED"
+          },
+          {
+            "id": "PD-006",
+            "title": "Assumption Register",
+            "status": "NOT_STARTED"
+          }
+        ]
+      },
+      "open_risks": 0,
+      "cost_impact": "TBD",
+      "analysis": "Первый slice определён как Life Continuity Desk.",
+      "decisions": [
+        "First target = independent adult",
+        "Portability + provenance are first-class"
+      ],
+      "history": [
+        "PD-002 created",
+        "PD-003 created"
+      ],
+      "lessons": [
+        "Security-cost feedback should enter before architecture."
+      ]
+    },
+    {
+      "id": "PD-02",
+      "short": "INFOSEC",
+      "name": "Information Security",
+      "status": "BLOCKED",
+      "owner": "ИБ-специалист",
+      "gate": "BLOCKED",
+      "documents": {
+        "done": 0,
+        "total": 6,
+        "items": []
+      },
+      "open_risks": 0,
+      "cost_impact": "TBD",
+      "analysis": "Waiting for Product Gate.",
+      "decisions": [],
+      "history": [],
+      "lessons": []
+    },
+    {
+      "id": "DS-02",
+      "short": "DEVSECOPS",
+      "name": "DevSecOps Security",
+      "status": "BLOCKED",
+      "owner": "DevSecOps Security",
+      "gate": "BLOCKED",
+      "documents": {
+        "done": 0,
+        "total": 1,
+        "items": []
+      },
+      "open_risks": 0,
+      "cost_impact": "TBD",
+      "analysis": "Waiting for Security Intake.",
+      "decisions": [],
+      "history": [],
+      "lessons": []
+    },
+    {
+      "id": "PD-03",
+      "short": "COMPLIANCE",
+      "name": "Legal / Compliance",
+      "status": "BLOCKED",
+      "owner": "Compliance",
+      "gate": "BLOCKED",
+      "documents": {
+        "done": 0,
+        "total": 3,
+        "items": []
+      },
+      "open_risks": 0,
+      "cost_impact": "TBD",
+      "analysis": "Not started.",
+      "decisions": [],
+      "history": [],
+      "lessons": []
+    },
+    {
+      "id": "PD-04",
+      "short": "BA",
+      "name": "Business Analysis",
+      "status": "BLOCKED",
+      "owner": "Business Analyst",
+      "gate": "BLOCKED",
+      "documents": {
+        "done": 0,
+        "total": 6,
+        "items": []
+      },
+      "open_risks": 0,
+      "cost_impact": "—",
+      "analysis": "Not started.",
+      "decisions": [],
+      "history": [],
+      "lessons": []
+    },
+    {
+      "id": "PD-05",
+      "short": "SA",
+      "name": "System Analysis",
+      "status": "BLOCKED",
+      "owner": "System Analyst",
+      "gate": "BLOCKED",
+      "documents": {
+        "done": 0,
+        "total": 7,
+        "items": []
+      },
+      "open_risks": 0,
+      "cost_impact": "—",
+      "analysis": "Not started.",
+      "decisions": [],
+      "history": [],
+      "lessons": []
+    },
+    {
+      "id": "PD-06",
+      "short": "REQ",
+      "name": "Requirements Baseline",
+      "status": "BLOCKED",
+      "owner": "Requirements",
+      "gate": "BLOCKED",
+      "documents": {
+        "done": 0,
+        "total": 7,
+        "items": []
+      },
+      "open_risks": 0,
+      "cost_impact": "—",
+      "analysis": "Not started.",
+      "decisions": [],
+      "history": [],
+      "lessons": []
+    },
+    {
+      "id": "PD-07",
+      "short": "REVIEW",
+      "name": "Pre-Design Review",
+      "status": "BLOCKED",
+      "owner": "Review Board",
+      "gate": "BLOCKED",
+      "documents": {
+        "done": 0,
+        "total": 2,
+        "items": []
+      },
+      "open_risks": 0,
+      "cost_impact": "—",
+      "analysis": "Architecture blocked.",
+      "decisions": [],
+      "history": [],
+      "lessons": []
+    },
+    {
+      "id": "ARCH",
+      "short": "ARCH",
+      "name": "Architecture",
+      "status": "BLOCKED",
+      "owner": "Architect",
+      "gate": "BLOCKED",
+      "documents": {
+        "done": 0,
+        "total": 0,
+        "items": []
+      },
+      "open_risks": 0,
+      "cost_impact": "—",
+      "analysis": "Architecture blocked.",
+      "decisions": [],
+      "history": [],
+      "lessons": []
+    },
+    {
+      "id": "DEV",
+      "short": "DEV",
+      "name": "Development",
+      "status": "NOT_STARTED",
+      "owner": "Development",
+      "gate": "NOT_READY",
+      "documents": {
+        "done": 0,
+        "total": 0,
+        "items": []
+      },
+      "open_risks": 0,
+      "cost_impact": "—",
+      "analysis": "Not started.",
+      "decisions": [],
+      "history": [],
+      "lessons": []
+    },
+    {
+      "id": "QA",
+      "short": "QA / EVAL",
+      "name": "QA / Evaluation",
+      "status": "NOT_STARTED",
+      "owner": "QA",
+      "gate": "NOT_READY",
+      "documents": {
+        "done": 0,
+        "total": 0,
+        "items": []
+      },
+      "open_risks": 0,
+      "cost_impact": "—",
+      "analysis": "Not started.",
+      "decisions": [],
+      "history": [],
+      "lessons": []
+    },
+    {
+      "id": "OPS",
+      "short": "OPS",
+      "name": "Operations",
+      "status": "NOT_STARTED",
+      "owner": "SRE",
+      "gate": "NOT_READY",
+      "documents": {
+        "done": 0,
+        "total": 0,
+        "items": []
+      },
+      "open_risks": 0,
+      "cost_impact": "—",
+      "analysis": "Not started.",
+      "decisions": [],
+      "history": [],
+      "lessons": []
+    }
+  ]
+}
