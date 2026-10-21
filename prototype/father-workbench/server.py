@@ -25,6 +25,7 @@ from gate_engine import (
     evaluate_stage_gate,
     validate_gate_decision,
 )
+from lifecycle_engine import reconcile_project_flow
 from migration_engine import build_migration_plan
 from state_store import ProjectStateStore, StateConflictError
 from providers.base import ProviderError
@@ -40,6 +41,7 @@ PROJECTS_FILE = REPO_ROOT / "projects" / "registry.json"
 PROVIDERS_FILE = REPO_ROOT / "config" / "dev_platform" / "providers.json"
 GIT_SNAPSHOT_FILE = REPO_ROOT / "docs" / "git" / "current_workspace.snapshot.json"
 GATE_POLICIES_FILE = REPO_ROOT / "config" / "gates" / "stage_gate_policies.json"
+STAGE_FLOW_FILE = REPO_ROOT / "config" / "lifecycle" / "project_stage_flow.json"
 RUNTIME_DIR = APP_DIR / "runtime"
 AUDIT_FILE = RUNTIME_DIR / "scm-actions.jsonl"
 EVIDENCE_STORE = EvidenceStore(RUNTIME_DIR)
@@ -323,6 +325,12 @@ def decide_gate(
         decided_by,
         policies,
     )
+    lifecycle = reconcile_project_flow(
+        updated,
+        read_json(STAGE_FLOW_FILE),
+    )
+    updated = lifecycle["state"]
+
     try:
         new_etag = PROJECT_STATE_STORE.write(
             project,
@@ -346,6 +354,11 @@ def decide_gate(
         "decided_by": decided_by.strip() or "HUMAN",
         "previous_etag": current_etag,
         "new_etag": new_etag,
+        "lifecycle": {
+            "previous_current_stage": lifecycle["previous_current_stage"],
+            "current_stage": lifecycle["current_stage"],
+            "changes": lifecycle["changes"],
+        },
     }
     event = EVIDENCE_STORE.append_manufacturing_event(
         project_id=project_id,
@@ -373,6 +386,7 @@ def decide_gate(
         "new_etag": new_etag,
         "evidence": evidence,
         "manufacturing_event_id": event["event_id"],
+        "lifecycle": payload["lifecycle"],
         "worktree_change": True,
         "git_commit_required": True,
     }
