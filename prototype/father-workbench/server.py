@@ -11,6 +11,7 @@ import argparse
 import json
 import mimetypes
 import uuid
+from datetime import datetime, timezone
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -24,6 +25,8 @@ REPO_ROOT = APP_DIR.parents[1]
 PROJECTS_FILE = REPO_ROOT / "projects" / "registry.json"
 PROVIDERS_FILE = REPO_ROOT / "config" / "dev_platform" / "providers.json"
 GIT_SNAPSHOT_FILE = REPO_ROOT / "docs" / "git" / "current_workspace.snapshot.json"
+RUNTIME_DIR = APP_DIR / "runtime"
+AUDIT_FILE = RUNTIME_DIR / "scm-actions.jsonl"
 
 MAX_JSON_BODY = 16 * 1024
 
@@ -107,6 +110,132 @@ def live_provider_state(project: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("Project has no repository/branch binding")
 
     return GitHubAdapter().live_state(str(repository), str(branch))
+
+
+def write_audit_event(event: dict[str, Any]) -> None:
+    RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
+    with AUDIT_FILE.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(event, ensure_ascii=False, sort_keys=True) + "\n")
+
+
+def execute_action(
+    project_id: str,
+    action: str,
+    params: dict[str, Any],
+) -> dict[str, Any]:
+    plan = plan_action(project_id, action)
+    action_id = plan["action_id"]
+
+    if not plan.get("allowed"):
+        return plan
+
+    if action != "SCM.CREATE_BRANCH":
+        return {
+            **plan,
+            "status": "BLOCKED",
+            "allowed": False,
+            "reasons": ["ACTION_EXECUTION_NOT_IMPLEMENTED"],
+        }
+
+    project = project_by_id(project_id)
+    if not project:
+        return {
+            **plan,
+            "status": "BLOCKED",
+            "allowed": False,
+            "reasons": ["PROJECT_NOT_FOUND"],
+        }
+
+    dev_platform = project.get("dev_platform") or {}
+    provider = dev_platform.get("primary_provider")
+    if provider != "github":
+        return {
+            **plan,
+            "status": "BLOCKED",
+            "allowed": False,
+            "reasons": ["PROVIDER_WRITE_ADAPTER_NOT_IMPLEMENTED"],
+        }
+
+    adapter = GitHubAdapter()
+    if not adapter.can_write:
+        return {
+            **plan,
+            "status": "BLOCKED",
+            "allowed": False,
+            "reasons": ["PROVIDER_WRITE_CREDENTIAL_UNAVAILABLE"],
+        }
+
+    branch_name = str(params.get("branch_name", "")).strip()
+    base_ref = str(
+        params.get("base_ref")
+        or dev_platform.get("branch")
+        or project.get("branch")
+        or ""
+    ).strip()
+    if not branch_name or not base_ref:
+        return {
+            **plan,
+            "status": "BLOCKED",
+            "allowed": False,
+            "reasons": ["BRANCH_NAME_AND_BASE_REQUIRED"],
+        }
+
+    started = {
+        "action_id": action_id,
+        "project_id": project_id,
+        "provider": provider,
+        "action": action,
+        "status": "EXECUTING",
+        "requested_at": datetime.now(timezone.utc).isoformat(),
+        "target": {
+            "repository": dev_platform.get("repository") or project.get("repository"),
+            "branch_name": branch_name,
+            "base_ref": base_ref,
+        },
+    }
+    write_audit_event(started)
+
+    try:
+        result = adapter.create_branch(
+            str(dev_platform.get("repository") or project.get("repository")),
+            branch_name,
+            base_ref,
+        )
+    except (ProviderError, ValueError) as exc:
+        failed = {
+            **started,
+            "status": "FAILED",
+            "finished_at": datetime.now(timezone.utc).isoformat(),
+            "error": str(exc),
+        }
+        write_audit_event(failed)
+        return {
+            "action_id": action_id,
+            "project_id": project_id,
+            "action": action,
+            "status": "FAILED",
+            "allowed": False,
+            "reasons": ["PROVIDER_MUTATION_FAILED"],
+            "provider_mutation": False,
+        }
+
+    succeeded = {
+        **started,
+        "status": "SUCCEEDED",
+        "finished_at": datetime.now(timezone.utc).isoformat(),
+        "result": result,
+    }
+    write_audit_event(succeeded)
+    return {
+        "action_id": action_id,
+        "project_id": project_id,
+        "action": action,
+        "status": "SUCCEEDED",
+        "allowed": True,
+        "reasons": [],
+        "provider_mutation": True,
+        "result": result,
+    }
 
 
 def plan_action(project_id: str, action: str) -> dict[str, Any]:
@@ -211,7 +340,7 @@ class FatherHandler(BaseHTTPRequestHandler):
                         "status": "ok",
                         "service": "father-project-workbench",
                         "version": "0.2",
-                        "provider_mutations": False,
+                        "provider_mutations": ["SCM.CREATE_BRANCH"],
                         "stage_state_api": True,
                         "live_provider_read": ["github"],
                     }
@@ -302,7 +431,7 @@ class FatherHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:  # noqa: N802
         path = urlparse(self.path).path
-        if path != "/api/actions/plan":
+        if path not in {"/api/actions/plan", "/api/actions/execute"}:
             self._error_json(HTTPStatus.NOT_FOUND, "ENDPOINT_NOT_FOUND")
             return
 
@@ -333,7 +462,23 @@ class FatherHandler(BaseHTTPRequestHandler):
             self._error_json(HTTPStatus.BAD_REQUEST, "PROJECT_AND_ACTION_REQUIRED")
             return
 
-        self._json(plan_action(project_id, action))
+        if path == "/api/actions/plan":
+            self._json(plan_action(project_id, action))
+            return
+
+        if self.headers.get("X-FATHER-Action") != "confirm":
+            self._error_json(HTTPStatus.FORBIDDEN, "EXPLICIT_ACTION_HEADER_REQUIRED")
+            return
+        if body.get("confirm") is not True:
+            self._error_json(HTTPStatus.FORBIDDEN, "EXPLICIT_CONFIRMATION_REQUIRED")
+            return
+
+        params = body.get("params") or {}
+        if not isinstance(params, dict):
+            self._error_json(HTTPStatus.BAD_REQUEST, "PARAMS_MUST_BE_OBJECT")
+            return
+
+        self._json(execute_action(project_id, action, params))
 
     def _serve_static(self, request_path: str) -> None:
         relative = request_path.lstrip("/") or "index.html"
