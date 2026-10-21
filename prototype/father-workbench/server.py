@@ -129,7 +129,7 @@ def execute_action(
     if not plan.get("allowed"):
         return plan
 
-    if action != "SCM.CREATE_BRANCH":
+    if action not in {"SCM.CREATE_BRANCH", "SCM.OPEN_CHANGE_REQUEST"}:
         return {
             **plan,
             "status": "BLOCKED",
@@ -165,19 +165,63 @@ def execute_action(
             "reasons": ["PROVIDER_WRITE_CREDENTIAL_UNAVAILABLE"],
         }
 
-    branch_name = str(params.get("branch_name", "")).strip()
-    base_ref = str(
-        params.get("base_ref")
-        or dev_platform.get("branch")
-        or project.get("branch")
+    repository = str(
+        dev_platform.get("repository")
+        or project.get("repository")
         or ""
     ).strip()
-    if not branch_name or not base_ref:
+    if not repository:
         return {
             **plan,
             "status": "BLOCKED",
             "allowed": False,
-            "reasons": ["BRANCH_NAME_AND_BASE_REQUIRED"],
+            "reasons": ["REPOSITORY_BINDING_REQUIRED"],
+        }
+
+    if action == "SCM.CREATE_BRANCH":
+        branch_name = str(params.get("branch_name", "")).strip()
+        base_ref = str(
+            params.get("base_ref")
+            or dev_platform.get("branch")
+            or project.get("branch")
+            or ""
+        ).strip()
+        if not branch_name or not base_ref:
+            return {
+                **plan,
+                "status": "BLOCKED",
+                "allowed": False,
+                "reasons": ["BRANCH_NAME_AND_BASE_REQUIRED"],
+            }
+        target = {
+            "repository": repository,
+            "branch_name": branch_name,
+            "base_ref": base_ref,
+        }
+    else:
+        title = str(params.get("title", "")).strip()
+        head_ref = str(
+            params.get("head_ref")
+            or dev_platform.get("branch")
+            or project.get("branch")
+            or ""
+        ).strip()
+        base_ref = str(params.get("base_ref", "")).strip()
+        body = str(params.get("body", ""))
+        draft = bool(params.get("draft", True))
+        if not title or not head_ref or not base_ref:
+            return {
+                **plan,
+                "status": "BLOCKED",
+                "allowed": False,
+                "reasons": ["TITLE_HEAD_AND_BASE_REQUIRED"],
+            }
+        target = {
+            "repository": repository,
+            "title": title,
+            "head_ref": head_ref,
+            "base_ref": base_ref,
+            "draft": draft,
         }
 
     started = {
@@ -187,20 +231,26 @@ def execute_action(
         "action": action,
         "status": "EXECUTING",
         "requested_at": datetime.now(timezone.utc).isoformat(),
-        "target": {
-            "repository": dev_platform.get("repository") or project.get("repository"),
-            "branch_name": branch_name,
-            "base_ref": base_ref,
-        },
+        "target": target,
     }
     write_audit_event(started)
 
     try:
-        result = adapter.create_branch(
-            str(dev_platform.get("repository") or project.get("repository")),
-            branch_name,
-            base_ref,
-        )
+        if action == "SCM.CREATE_BRANCH":
+            result = adapter.create_branch(
+                repository,
+                branch_name,
+                base_ref,
+            )
+        else:
+            result = adapter.open_change_request(
+                repository,
+                title,
+                head_ref,
+                base_ref,
+                body=body,
+                draft=draft,
+            )
     except (ProviderError, ValueError) as exc:
         failed = {
             **started,
@@ -340,7 +390,10 @@ class FatherHandler(BaseHTTPRequestHandler):
                         "status": "ok",
                         "service": "father-project-workbench",
                         "version": "0.2",
-                        "provider_mutations": ["SCM.CREATE_BRANCH"],
+                        "provider_mutations": [
+                            "SCM.CREATE_BRANCH",
+                            "SCM.OPEN_CHANGE_REQUEST",
+                        ],
                         "stage_state_api": True,
                         "live_provider_read": ["github"],
                     }
