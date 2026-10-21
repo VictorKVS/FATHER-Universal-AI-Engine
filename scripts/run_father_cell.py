@@ -12,7 +12,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from father_core import FactoryCell
+from father_core import build_cell
 
 
 def parse_value(args: argparse.Namespace):
@@ -42,7 +42,7 @@ def main() -> int:
 
     try:
         value = parse_value(args)
-        cell = FactoryCell(
+        cell = build_cell(
             repo_root=REPO_ROOT,
             cell_id=args.cell,
             test_mode=args.test,
