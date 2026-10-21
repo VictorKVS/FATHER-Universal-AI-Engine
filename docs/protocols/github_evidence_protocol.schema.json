@@ -1,0 +1,66 @@
+{
+  "schema_version": "father.github_evidence_protocol.v0.1",
+  "protocol_id": "FATHER-GIT-EVIDENCE-001",
+  "storage_modes": [
+    "DIRECT",
+    "MANIFEST_POINTER",
+    "CONTENT_FORBIDDEN"
+  ],
+  "size_policy": {
+    "units": "MiB",
+    "small_max": 1,
+    "medium_max": 10,
+    "large_prefer_manifest": true,
+    "note": "Internal FATHER policy; sensitivity overrides size."
+  },
+  "devsecops_states": [
+    "NOT_APPLICABLE",
+    "NOT_RUN",
+    "RUNNING",
+    "PASS",
+    "FAIL",
+    "BLOCKED",
+    "WAIVED_WITH_APPROVAL"
+  ],
+  "forbidden_content": [
+    "PASSWORD",
+    "API_KEY",
+    "ACCESS_TOKEN",
+    "PRIVATE_KEY",
+    "TELEGRAM_SESSION",
+    "SECRET_ENV",
+    "RAW_CREDENTIAL",
+    "UNAUTHORIZED_SENSITIVE_DATA"
+  ],
+  "evidence_manifest_fields": [
+    "evidence_id",
+    "project_id",
+    "stage_id",
+    "artifact_type",
+    "name",
+    "version",
+    "size_bytes",
+    "sha256",
+    "classification",
+    "storage_mode",
+    "storage_location",
+    "owner",
+    "created_at",
+    "producer",
+    "source_ref",
+    "commit_ref",
+    "test_ref",
+    "gate_ref",
+    "access_policy",
+    "retention",
+    "verification_status",
+    "notes"
+  ],
+  "canonical_rules": {
+    "material_change_requires_trace": true,
+    "pass_requires_evidence": true,
+    "security_green_requires_check_or_waiver": true,
+    "secrets_in_git": false,
+    "external_artifact_requires_manifest": true
+  }
+}
