@@ -1471,6 +1471,196 @@ def switch_primary_provider(
     }
 
 
+def rollback_primary_provider(
+    project_id: str,
+    target_provider: str,
+    expected_binding_etag: str,
+) -> dict[str, Any]:
+    project = project_by_id(project_id)
+    if not project:
+        return {
+            "status": "BLOCKED",
+            "errors": ["PROJECT_NOT_FOUND"],
+        }
+
+    bindings, current_etag = PROVIDER_BINDING_STORE.read(project)
+    if current_etag != expected_binding_etag:
+        return {
+            "status": "CONFLICT",
+            "errors": ["BINDING_ETAG_CONFLICT"],
+            "current_etag": current_etag,
+            "bindings": bindings,
+        }
+
+    current_primary = dict(bindings.get("primary") or {})
+    last_switch = dict(bindings.get("last_switch") or {})
+    rollback = next(
+        (
+            dict(item)
+            for item in bindings.get("targets", [])
+            if item.get("provider") == target_provider
+            and item.get("status") == "ROLLBACK_CANDIDATE"
+        ),
+        None,
+    )
+    if not rollback:
+        return {
+            "status": "BLOCKED",
+            "errors": ["ROLLBACK_CANDIDATE_NOT_FOUND"],
+        }
+
+    if (
+        str(last_switch.get("from_provider") or "") != target_provider
+        or str(last_switch.get("to_provider") or "")
+        != str(current_primary.get("provider") or "")
+    ):
+        return {
+            "status": "BLOCKED",
+            "errors": ["ROLLBACK_LINEAGE_MISMATCH"],
+        }
+
+    connectivity = test_provider_connection(
+        project_id,
+        target_provider,
+    )
+    if connectivity.get("status") != "PASS":
+        return {
+            "status": "BLOCKED",
+            "errors": ["ROLLBACK_TARGET_CONNECTIVITY_NOT_PASS"],
+            "connectivity": connectivity,
+        }
+
+    action_id = f"ACT-{uuid.uuid4().hex[:12].upper()}"
+    started = {
+        "action_id": action_id,
+        "project_id": project_id,
+        "action": "PROVIDER.ROLLBACK_PRIMARY",
+        "status": "EXECUTING",
+        "from_provider": current_primary.get("provider"),
+        "to_provider": target_provider,
+        "rollback_of_approval_id": last_switch.get("approval_id"),
+        "requested_at": datetime.now(timezone.utc).isoformat(),
+    }
+    write_audit_event(started)
+    EVIDENCE_STORE.append_manufacturing_event(
+        project_id=project_id,
+        event_type="PROVIDER_PRIMARY_ROLLBACK_STARTED",
+        source_ref=action_id,
+        payload=started,
+    )
+
+    try:
+        state, new_etag, historical = PROVIDER_BINDING_STORE.switch_primary(
+            project,
+            target_provider=target_provider,
+            expected_etag=current_etag,
+            approval_id=f"ROLLBACK:{action_id}",
+            verification_refs={
+                "rollback_connectivity_evidence": str(
+                    (connectivity.get("evidence") or {}).get(
+                        "evidence_id"
+                    )
+                    or ""
+                ),
+                "rollback_of_approval_id": str(
+                    last_switch.get("approval_id") or ""
+                ),
+            },
+        )
+    except BindingConflictError:
+        latest_state, latest_etag = PROVIDER_BINDING_STORE.read(project)
+        return {
+            "status": "CONFLICT",
+            "errors": ["BINDING_ETAG_CONFLICT"],
+            "current_etag": latest_etag,
+            "bindings": latest_state,
+        }
+    except ValueError as exc:
+        return {
+            "status": "BLOCKED",
+            "errors": [str(exc)],
+        }
+
+    primary = dict(state.get("primary") or {})
+    live_evidence = None
+    post_status = "PASS"
+    try:
+        live = live_binding_state(
+            str(primary.get("provider") or ""),
+            str(primary.get("repository") or ""),
+            str(primary.get("branch") or ""),
+        )
+        live_evidence = capture_live_provider_evidence(
+            project,
+            live,
+            source_ref=action_id,
+        )
+    except (ProviderError, OSError, ValueError, NotImplementedError):
+        post_status = "DEGRADED"
+
+    payload = {
+        "action_id": action_id,
+        "project_id": project_id,
+        "action": "PROVIDER.ROLLBACK_PRIMARY",
+        "status": (
+            "ROLLED_BACK"
+            if post_status == "PASS"
+            else "ROLLED_BACK_EVIDENCE_DEGRADED"
+        ),
+        "previous_primary": current_primary,
+        "restored_primary": primary,
+        "historical_binding": historical,
+        "rollback_of_approval_id": last_switch.get("approval_id"),
+        "connectivity_evidence_id": (
+            (connectivity.get("evidence") or {}).get("evidence_id")
+        ),
+        "post_rollback_status": post_status,
+        "binding_etag": new_etag,
+        "finished_at": datetime.now(timezone.utc).isoformat(),
+    }
+    write_audit_event(payload)
+
+    event = EVIDENCE_STORE.append_manufacturing_event(
+        project_id=project_id,
+        event_type=(
+            "PROVIDER_PRIMARY_ROLLED_BACK"
+            if post_status == "PASS"
+            else "PROVIDER_PRIMARY_ROLLBACK_DEGRADED"
+        ),
+        source_ref=action_id,
+        payload=payload,
+    )
+    evidence = EVIDENCE_STORE.store_evidence(
+        project_id=project_id,
+        evidence_type="PROVIDER_PRIMARY_ROLLBACK",
+        provider=target_provider,
+        payload=payload,
+        subject_key=action_id,
+        refs={
+            "manufacturing_event_id": event["event_id"],
+            "connectivity_evidence_id": str(
+                payload.get("connectivity_evidence_id") or ""
+            ),
+        },
+    )
+    return {
+        "status": payload["status"],
+        "project_id": project_id,
+        "action_id": action_id,
+        "primary": primary,
+        "previous_primary": current_primary,
+        "binding_etag": new_etag,
+        "connectivity": connectivity,
+        "evidence": evidence,
+        "post_rollback_evidence": live_evidence,
+        "post_rollback_status": post_status,
+        "manufacturing_event_id": event["event_id"],
+        "provider_mutation": False,
+        "worktree_change": True,
+        "git_commit_required": True,
+    }
+
+
 def provider_state_subject_key(
     project: dict[str, Any],
     live: dict[str, Any],
@@ -2627,6 +2817,7 @@ class FatherHandler(BaseHTTPRequestHandler):
                         "provider_bindings": True,
                         "migration_parity_verification": True,
                         "provider_connection_test": True,
+                        "manual_primary_rollback": True,
                         "provider_primary_switch": "CUTOVER_GATED",
                         "migration_security_review": True,
                         "migration_cutover_approval": True,
@@ -2890,6 +3081,7 @@ class FatherHandler(BaseHTTPRequestHandler):
             "/api/migrations/security-review",
             "/api/migrations/cutover-review",
             "/api/migrations/switch-primary",
+            "/api/migrations/rollback-primary",
             "/api/providers/test-connection",
             "/api/gates/recalculate",
             "/api/gates/decide",
@@ -3301,6 +3493,55 @@ class FatherHandler(BaseHTTPRequestHandler):
                 target_provider,
             )
             if result["status"] == "BLOCKED":
+                self._json(result, HTTPStatus.BAD_REQUEST)
+            else:
+                self._json(result)
+            return
+
+        if path == "/api/migrations/rollback-primary":
+            if self.headers.get("X-FATHER-Action") != "confirm":
+                self._error_json(
+                    HTTPStatus.FORBIDDEN,
+                    "EXPLICIT_ACTION_HEADER_REQUIRED",
+                )
+                return
+            if body.get("confirm") is not True:
+                self._error_json(
+                    HTTPStatus.FORBIDDEN,
+                    "EXPLICIT_CONFIRMATION_REQUIRED",
+                )
+                return
+            target_provider = str(
+                body.get("target_provider", "")
+            ).strip()
+            expected_binding_etag = str(
+                body.get("expected_binding_etag", "")
+            ).strip()
+            confirmation = str(
+                body.get("confirmation", "")
+            ).strip()
+            expected_confirmation = (
+                f"ROLLBACK_PRIMARY:{project_id}:{target_provider}"
+            )
+            if (
+                not target_provider
+                or not expected_binding_etag
+                or confirmation != expected_confirmation
+            ):
+                self._error_json(
+                    HTTPStatus.BAD_REQUEST,
+                    "INVALID_ROLLBACK_REQUEST",
+                )
+                return
+
+            result = rollback_primary_provider(
+                project_id,
+                target_provider,
+                expected_binding_etag,
+            )
+            if result["status"] == "CONFLICT":
+                self._json(result, HTTPStatus.CONFLICT)
+            elif result["status"] == "BLOCKED":
                 self._json(result, HTTPStatus.BAD_REQUEST)
             else:
                 self._json(result)
