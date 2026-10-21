@@ -526,7 +526,10 @@ function documentsHtml(stage){
         '<span>'+esc(item.title)+'</span>'+
         '<span class="artifactActions">'+
           '<span class="pill '+esc(item.status)+'">'+esc(item.status)+'</span>'+
-          '<button class="miniAction" data-artifact-edit="'+esc(item.id)+'">Edit</button>'+
+          (item.source_ref
+            ?'<button class="miniAction" data-artifact-content="'+esc(item.id)+'">Content</button>'
+            :'')+
+          '<button class="miniAction" data-artifact-edit="'+esc(item.id)+'">Status</button>'+
         '</span>'+
       '</div>'
     ).join("")+'</div>'
@@ -566,6 +569,152 @@ async function submitArtifactUpdate(projectId,payload){
       errors:["CONTROL_PLANE_API_UNAVAILABLE"]
     };
   }
+}
+
+async function loadDocumentContent(projectId,stageId,artifactId){
+  try{
+    const path="/api/projects/"+encodeURIComponent(projectId)+
+      "/stages/"+encodeURIComponent(stageId)+
+      "/artifacts/"+encodeURIComponent(artifactId)+"/content";
+    const response=await fetch(path,{cache:"no-store"});
+    const body=await response.json().catch(()=>({}));
+    return{http_status:response.status,...body};
+  }catch(_error){
+    return{
+      status:"BLOCKED",
+      errors:["CONTROL_PLANE_API_UNAVAILABLE"]
+    };
+  }
+}
+
+async function saveDocumentContent(projectId,payload){
+  try{
+    const response=await fetch("/api/documents/write",{
+      method:"POST",
+      headers:{
+        "Content-Type":"application/json",
+        "X-FATHER-Action":"confirm"
+      },
+      body:JSON.stringify({
+        project_id:projectId,
+        confirm:true,
+        ...payload
+      })
+    });
+    const body=await response.json().catch(()=>({}));
+    return{http_status:response.status,...body};
+  }catch(_error){
+    return{
+      status:"BLOCKED",
+      errors:["CONTROL_PLANE_API_UNAVAILABLE"]
+    };
+  }
+}
+
+function renderDocumentEditor(stage,artifact,payload){
+  const host=byId("stageContent");
+  if(!host)return;
+
+  host.querySelector(".documentEditor")?.remove();
+  const wrapper=document.createElement("div");
+  wrapper.className="documentEditor";
+
+  const head=document.createElement("div");
+  head.className="documentEditorHead";
+  const title=document.createElement("div");
+  title.innerHTML="<em>DOCUMENT EDITOR</em><strong></strong><small></small>";
+  title.querySelector("strong").textContent=artifact.title||artifact.id;
+  title.querySelector("small").textContent=
+    payload.document.source_ref+" · SHA "+payload.document.sha256.slice(0,12);
+  const close=document.createElement("button");
+  close.className="miniAction";
+  close.textContent="Close";
+  close.onclick=()=>wrapper.remove();
+  head.append(title,close);
+
+  const textarea=document.createElement("textarea");
+  textarea.className="documentTextarea";
+  textarea.value=payload.document.content||"";
+  textarea.spellcheck=false;
+
+  const foot=document.createElement("div");
+  foot.className="documentEditorFoot";
+  const status=document.createElement("span");
+  status.className="documentSaveState";
+  status.textContent=payload.document.exists
+    ?"Loaded "+payload.document.size+" bytes"
+    :"New file";
+  const save=document.createElement("button");
+  save.className="gateBtn";
+  save.textContent="Save document";
+  save.onclick=async()=>{
+    const rationale=(window.prompt(
+      "Why are you changing this document? (required)",
+      ""
+    )||"").trim();
+    if(!rationale)return;
+
+    const confirmed=window.confirm(
+      "Save "+payload.document.source_ref+
+      "? This changes the tracked worktree and requires a Git commit."
+    );
+    if(!confirmed)return;
+
+    save.disabled=true;
+    status.textContent="Saving…";
+    const result=await saveDocumentContent(
+      selectedProject,
+      {
+        stage_id:stage.id,
+        artifact_id:artifact.id,
+        content:textarea.value,
+        expected_sha256:payload.document.sha256,
+        rationale,
+        decided_by:"HUMAN_LOCAL_OPERATOR"
+      }
+    );
+    save.disabled=false;
+
+    if(!["UPDATED","NO_CHANGE"].includes(result.status)){
+      status.textContent=
+        (result.status||"BLOCKED")+" · "+
+        (result.errors||["UNKNOWN_ERROR"]).join(", ");
+      status.className="documentSaveState failText";
+      return;
+    }
+
+    status.className="documentSaveState okText";
+    if(result.status==="UPDATED"){
+      payload.document.sha256=result.document.new_sha256;
+      status.textContent=
+        "UPDATED · SHA "+result.document.new_sha256.slice(0,12)+
+        " · evidence "+(result.evidence?.evidence_id||"—")+
+        " · Git commit required";
+      await loadRuntimeHistory(projectById(selectedProject));
+    }else{
+      status.textContent="NO CHANGE";
+    }
+  };
+
+  foot.append(status,save);
+  wrapper.append(head,textarea,foot);
+  host.appendChild(wrapper);
+}
+
+async function openDocumentEditor(stage,artifact){
+  const payload=await loadDocumentContent(
+    selectedProject,
+    stage.id,
+    artifact.id
+  );
+  if(payload.status!=="OK"){
+    window.alert(
+      (payload.status||"BLOCKED")+": "+
+      (payload.errors||["UNKNOWN_ERROR"]).join(", ")
+    );
+    return;
+  }
+  renderDocumentEditor(stage,artifact,payload);
 }
 
 function wireArtifactControls(state,stage){
@@ -660,6 +809,15 @@ function wireArtifactControls(state,stage){
         (item)=>item.id===button.dataset.artifactEdit
       );
       apply(existing||null);
+    };
+  });
+
+  document.querySelectorAll("[data-artifact-content]").forEach((button)=>{
+    button.onclick=()=>{
+      const existing=(stage.documents?.items||[]).find(
+        (item)=>item.id===button.dataset.artifactContent
+      );
+      if(existing)openDocumentEditor(stage,existing);
     };
   });
 }
