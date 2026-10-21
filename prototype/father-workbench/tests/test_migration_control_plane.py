@@ -13,6 +13,7 @@ if str(APP_DIR) not in sys.path:
 import server
 from provider_binding_store import ProviderBindingStore
 from migration_security_review_store import MigrationSecurityReviewStore
+from migration_cutover_store import MigrationCutoverStore
 
 
 class MigrationControlPlaneTests(unittest.TestCase):
@@ -385,6 +386,180 @@ class MigrationControlPlaneTests(unittest.TestCase):
             self.assertEqual(result["status"], "BLOCKED")
             self.assertIn(
                 "TECHNICAL_MIGRATION_EVIDENCE_NOT_PASS",
+                result["errors"],
+            )
+
+    def test_cutover_approve_requires_current_security_review_refs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            review_store = MigrationSecurityReviewStore(Path(tmp))
+            cutover_store = MigrationCutoverStore(Path(tmp))
+
+            _review_state, review_etag = review_store.read("P-1")
+            verification_refs = {
+                "branch": "EVD-BRANCH",
+                "refs": "EVD-REFS",
+                "access": "EVD-ACCESS",
+                "verification_id": "MIGVERIFY-1",
+                "ref_parity_report_id": "REFPARITY-1",
+                "access_policy_report_id": "ACCESSPOL-1",
+            }
+            security_review, _new_review_etag = review_store.append_review(
+                project_id="P-1",
+                target_provider="gitlab",
+                decision="APPROVE",
+                rationale=(
+                    "Current migration evidence is acceptable and the "
+                    "cross-provider security review is approved."
+                ),
+                reviewed_by="Information Security Specialist",
+                verification_refs=verification_refs,
+                expected_etag=review_etag,
+            )
+            self.assertEqual(security_review["decision"], "APPROVE")
+
+            _cutover_state, cutover_etag = cutover_store.read("P-1")
+
+            events = []
+            evidence = []
+
+            class FakeEvidence:
+                def append_manufacturing_event(self, **kwargs):
+                    item = {
+                        "event_id": f"MFG-{len(events)+1}",
+                        **kwargs,
+                    }
+                    events.append(item)
+                    return item
+
+                def store_evidence(self, **kwargs):
+                    item = {
+                        "evidence_id": f"EVD-{len(evidence)+1}",
+                        "deduplicated": False,
+                        **kwargs,
+                    }
+                    evidence.append(item)
+                    return item
+
+            verification = {
+                "status": "PASS",
+                "verification": {"verification_id": "MIGVERIFY-1"},
+                "ref_parity": {"report_id": "REFPARITY-1"},
+                "access_policy": {"report_id": "ACCESSPOL-1"},
+                "evidence": {
+                    "branch": {"evidence_id": "EVD-BRANCH"},
+                    "refs": {"evidence_id": "EVD-REFS"},
+                    "access_policy": {"evidence_id": "EVD-ACCESS"},
+                },
+            }
+
+            with (
+                patch.object(server, "project_by_id", return_value=self.project),
+                patch.object(
+                    server,
+                    "verify_migration_target",
+                    return_value=verification,
+                ),
+                patch.object(
+                    server,
+                    "MIGRATION_SECURITY_REVIEW_STORE",
+                    review_store,
+                ),
+                patch.object(
+                    server,
+                    "MIGRATION_CUTOVER_STORE",
+                    cutover_store,
+                ),
+                patch.object(server, "EVIDENCE_STORE", FakeEvidence()),
+            ):
+                result = server.review_migration_cutover(
+                    "P-1",
+                    "gitlab",
+                    "APPROVE",
+                    (
+                        "Cutover is approved because current technical and "
+                        "security evidence is still identical to review."
+                    ),
+                    "Project Owner",
+                    cutover_etag,
+                )
+
+            self.assertEqual(result["status"], "APPLIED")
+            self.assertTrue(result["switch_primary_eligible"])
+            self.assertEqual(result["switch_primary_blockers"], [])
+            self.assertEqual(
+                evidence[0]["evidence_type"],
+                "CUTOVER_APPROVAL",
+            )
+
+    def test_cutover_approve_rejects_stale_security_review(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            review_store = MigrationSecurityReviewStore(Path(tmp))
+            cutover_store = MigrationCutoverStore(Path(tmp))
+
+            _state, etag = review_store.read("P-1")
+            review_store.append_review(
+                project_id="P-1",
+                target_provider="gitlab",
+                decision="APPROVE",
+                rationale=(
+                    "This security review was approved against an older "
+                    "migration evidence snapshot."
+                ),
+                reviewed_by="Information Security Specialist",
+                verification_refs={
+                    "branch": "OLD",
+                    "refs": "OLD",
+                    "access": "OLD",
+                },
+                expected_etag=etag,
+            )
+            _cutover_state, cutover_etag = cutover_store.read("P-1")
+
+            verification = {
+                "status": "PASS",
+                "verification": {"verification_id": "NEW-VERIFY"},
+                "ref_parity": {"report_id": "NEW-REF"},
+                "access_policy": {"report_id": "NEW-ACCESS"},
+                "evidence": {
+                    "branch": {"evidence_id": "NEW-BRANCH"},
+                    "refs": {"evidence_id": "NEW-REF-EVD"},
+                    "access_policy": {"evidence_id": "NEW-ACCESS-EVD"},
+                },
+            }
+
+            with (
+                patch.object(server, "project_by_id", return_value=self.project),
+                patch.object(
+                    server,
+                    "verify_migration_target",
+                    return_value=verification,
+                ),
+                patch.object(
+                    server,
+                    "MIGRATION_SECURITY_REVIEW_STORE",
+                    review_store,
+                ),
+                patch.object(
+                    server,
+                    "MIGRATION_CUTOVER_STORE",
+                    cutover_store,
+                ),
+            ):
+                result = server.review_migration_cutover(
+                    "P-1",
+                    "gitlab",
+                    "APPROVE",
+                    (
+                        "Attempting cutover against evidence newer than the "
+                        "recorded security review."
+                    ),
+                    "Project Owner",
+                    cutover_etag,
+                )
+
+            self.assertEqual(result["status"], "BLOCKED")
+            self.assertIn(
+                "MIGRATION_SECURITY_REVIEW_STALE",
                 result["errors"],
             )
 
