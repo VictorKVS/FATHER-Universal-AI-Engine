@@ -5,6 +5,7 @@ import json
 import sys
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 APP_DIR = Path(__file__).resolve().parents[1]
 REPO_ROOT = APP_DIR.parents[1]
@@ -58,6 +59,62 @@ class ActionPolicyTests(unittest.TestCase):
         plan = server.plan_action("DOES-NOT-EXIST", "SCM.CREATE_BRANCH")
         self.assertFalse(plan["allowed"])
         self.assertEqual(plan["reasons"], ["PROJECT_NOT_FOUND"])
+
+
+class ExecuteActionTests(unittest.TestCase):
+    def test_create_branch_blocks_without_write_credential(self) -> None:
+        class ReadOnlyAdapter:
+            can_write = False
+
+        with patch.object(server, "GitHubAdapter", return_value=ReadOnlyAdapter()):
+            result = server.execute_action(
+                "FATHER-PLATFORM-001",
+                "SCM.CREATE_BRANCH",
+                {"branch_name": "feature/test-write"},
+            )
+
+        self.assertFalse(result["allowed"])
+        self.assertEqual(
+            result["reasons"],
+            ["PROVIDER_WRITE_CREDENTIAL_UNAVAILABLE"],
+        )
+
+    def test_create_branch_writes_audit_before_and_after_mutation(self) -> None:
+        events = []
+
+        class WritableAdapter:
+            can_write = True
+
+            def create_branch(self, repository, branch_name, base_ref):
+                self.repository = repository
+                self.branch_name = branch_name
+                self.base_ref = base_ref
+                return {
+                    "provider": "github",
+                    "repository": repository,
+                    "branch": branch_name,
+                    "base_ref": base_ref,
+                    "head_sha": "abc123",
+                    "reconciled": True,
+                }
+
+        with (
+            patch.object(server, "GitHubAdapter", return_value=WritableAdapter()),
+            patch.object(server, "write_audit_event", side_effect=events.append),
+        ):
+            result = server.execute_action(
+                "FATHER-PLATFORM-001",
+                "SCM.CREATE_BRANCH",
+                {
+                    "branch_name": "feature/test-write",
+                    "base_ref": "feature/father-project-registry-v01",
+                },
+            )
+
+        self.assertTrue(result["allowed"])
+        self.assertTrue(result["provider_mutation"])
+        self.assertEqual(result["status"], "SUCCEEDED")
+        self.assertEqual([event["status"] for event in events], ["EXECUTING", "SUCCEEDED"])
 
 
 class RegistryContractTests(unittest.TestCase):

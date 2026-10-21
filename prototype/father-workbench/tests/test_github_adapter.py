@@ -21,6 +21,53 @@ class GitHubAdapterTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             GitHubAdapter.split_repository("invalid")
 
+    def test_branch_name_validation_rejects_dangerous_refs(self) -> None:
+        for value in (
+            "../main",
+            "feature//double",
+            "feature/test.lock",
+            "feature/test name",
+            "feature/test@{x}",
+        ):
+            with self.subTest(value=value):
+                with self.assertRaises(ValueError):
+                    GitHubAdapter.validate_branch_name(value)
+
+    def test_create_branch_requires_write_credential(self) -> None:
+        adapter = GitHubAdapter(token="")
+        with self.assertRaises(ProviderError):
+            adapter.create_branch("owner/repo", "feature/new", "main")
+
+    def test_create_branch_reconciles_provider_state(self) -> None:
+        adapter = GitHubAdapter(token="token")
+
+        def fake_request(path: str, query=None):
+            if "/git/ref/heads/" in path:
+                return {"object": {"sha": "base123"}}
+            if "/branches/" in path:
+                return {"commit": {"sha": "base123"}}
+            raise AssertionError(path)
+
+        with (
+            patch.object(adapter, "_request", side_effect=fake_request),
+            patch.object(
+                adapter,
+                "_mutate",
+                return_value={
+                    "ref": "refs/heads/feature/new",
+                    "object": {"sha": "base123"},
+                },
+            ),
+        ):
+            result = adapter.create_branch(
+                "owner/repo",
+                "feature/new",
+                "main",
+            )
+
+        self.assertTrue(result["reconciled"])
+        self.assertEqual(result["head_sha"], "base123")
+
     def test_live_state_is_normalized(self) -> None:
         adapter = GitHubAdapter(token="not-used")
 
