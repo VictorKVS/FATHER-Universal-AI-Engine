@@ -15,6 +15,7 @@ let model={
   devsecopsStates:{},
   evidencePacks:{},
   providerBindings:{},
+  migrationSecurity:{},
   migrationPlans:{},
   migrationVerifications:{}
 };
@@ -106,12 +107,17 @@ async function loadRuntimeHistory(project){
     ["/api/projects/"+projectId+"/dev-platform/bindings"],
     {status:"BLOCKED",bindings:null,etag:null}
   );
+  const migrationSecurity=await readFirst(
+    ["/api/projects/"+projectId+"/dev-platform/migration-security"],
+    {status:"BLOCKED",reviews:[],etag:null}
+  );
   model.evidenceStates[project.project_id]=evidence.evidence||[];
   model.manufacturingEvents[project.project_id]=events.events||[];
   model.traceability[project.project_id]=traceability;
   model.devsecopsStates[project.project_id]=devsecops?.devsecops||null;
   model.evidencePacks[project.project_id]=packs.packs||[];
   model.providerBindings[project.project_id]=bindings;
+  model.migrationSecurity[project.project_id]=migrationSecurity;
 }
 
 async function loadLiveState(project){
@@ -1390,6 +1396,41 @@ function renderScmActions(project,state,branch){
   });
 }
 
+async function submitMigrationSecurityReview(
+  projectId,
+  targetProvider,
+  decision,
+  rationale,
+  reviewedBy,
+  expectedEtag
+){
+  try{
+    const response=await fetch("/api/migrations/security-review",{
+      method:"POST",
+      headers:{
+        "Content-Type":"application/json",
+        "X-FATHER-Action":"confirm"
+      },
+      body:JSON.stringify({
+        project_id:projectId,
+        target_provider:targetProvider,
+        decision,
+        rationale,
+        reviewed_by:reviewedBy,
+        expected_etag:expectedEtag,
+        confirm:true
+      })
+    });
+    const body=await response.json().catch(()=>({}));
+    return{http_status:response.status,...body};
+  }catch(_error){
+    return{
+      status:"BLOCKED",
+      errors:["CONTROL_PLANE_API_UNAVAILABLE"]
+    };
+  }
+}
+
 async function bindMigrationTarget(
   projectId,
   targetProvider,
@@ -1643,6 +1684,9 @@ function renderProviderMatrix(){
   host.innerHTML=(model.providers.providers||[]).map((provider)=>{
     const runtime=providerRuntimeById(provider.id);
     const binding=targetBindings.find((item)=>item.provider===provider.id);
+    const latestReview=(model.migrationSecurity[project.project_id]?.reviews||[])
+      .filter((item)=>item.target_provider===provider.id)
+      .slice(-1)[0];
     const role=provider.id===primary
       ?"PRIMARY"
       :(targets.has(provider.id)?"MIGRATION TARGET":"AVAILABLE");
@@ -1668,9 +1712,14 @@ function renderProviderMatrix(){
       (verification
         ?'<div class="providerVerifyState '+(verification.status==="PASS"?"pass":"blocked")+'">'+
           esc(verification.status)+
-          (verification.verification?.blockers?.length
-            ?" · "+esc(verification.verification.blockers.join(", "))
-            :" · HEAD parity proven")+
+          ' · branch '+esc(verification.verification?.state||"—")+
+          ' · refs '+esc(verification.ref_parity?.state||"—")+
+          ' · access '+esc(verification.access_policy?.state||"—")+
+          '</div>'
+        :'')+
+      (latestReview
+        ?'<div class="providerReviewState '+stateClass(latestReview.decision==="APPROVE"?"PASS":latestReview.decision==="REJECT"?"FAIL":"HOLD")+'">'+
+          'SECURITY '+esc(latestReview.decision)+' · '+esc(latestReview.reviewed_by)+
           '</div>'
         :'')+
       (canTarget
@@ -1680,6 +1729,7 @@ function renderProviderMatrix(){
             (binding?"Edit binding":"Bind target")+
           '</button>'+
           '<button class="providerVerifyAction" data-provider="'+esc(provider.id)+'" '+(binding?"":"disabled")+'>Verify parity</button>'+
+          '<button class="providerSecurityAction" data-provider="'+esc(provider.id)+'" '+(binding?"":"disabled")+'>Security review</button>'+
           '</div>'
         :'')+
       '</div>';
@@ -1794,6 +1844,69 @@ function renderProviderMatrix(){
       renderProviderMatrix();
     };
   });
+
+  host.querySelectorAll(".providerSecurityAction:not(:disabled)").forEach((button)=>{
+    button.onclick=async()=>{
+      const target=button.dataset.provider;
+      const envelope=model.migrationSecurity[project.project_id]||{};
+      if(!envelope.etag){
+        window.alert("Security review ETag unavailable. Refresh FATHER.");
+        return;
+      }
+      const decision=(window.prompt(
+        "Security decision: APPROVE, HOLD or REJECT",
+        "HOLD"
+      )||"").trim().toUpperCase();
+      if(!["APPROVE","HOLD","REJECT"].includes(decision)){
+        window.alert("Invalid decision.");
+        return;
+      }
+      const rationale=window.prompt(
+        "Security rationale (minimum 20 characters)",
+        ""
+      );
+      if(!rationale)return;
+      const reviewer=window.prompt(
+        "Reviewed by",
+        "Information Security Specialist"
+      );
+      if(!reviewer)return;
+      const confirmed=window.confirm(
+        "Record "+decision+" security review for migration to "+target+
+        "? FATHER will re-verify current technical evidence first."
+      );
+      if(!confirmed)return;
+
+      const output=byId("actionResult");
+      output.textContent="Re-verifying and recording security review…";
+      output.className="actionResult";
+      const reviewed=await submitMigrationSecurityReview(
+        project.project_id,
+        target,
+        decision,
+        rationale,
+        reviewer,
+        envelope.etag
+      );
+      if(reviewed.status!=="APPLIED"){
+        output.textContent=
+          (reviewed.status||"BLOCKED")+" · "+
+          (reviewed.errors||["UNKNOWN_ERROR"]).join(", ");
+        output.className="actionResult block";
+        return;
+      }
+      await loadRuntimeHistory(project);
+      output.textContent=
+        reviewed.review.review_id+" · SECURITY "+reviewed.decision+
+        " · tracked review changed · Git commit required"+
+        (reviewed.cutover_blockers?.length
+          ?" · cutover blockers: "+reviewed.cutover_blockers.join(", ")
+          :"");
+      output.className=
+        "actionResult "+(reviewed.decision==="APPROVE"?"ok":"block");
+      renderProviderMatrix();
+    };
+  });
 }
 
 byId("evidencePackBtn").onclick=handleEvidencePackExport;
@@ -1805,6 +1918,7 @@ byId("refresh").onclick=async()=>{
   model.devsecopsStates={};
   model.evidencePacks={};
   model.providerBindings={};
+  model.migrationSecurity={};
   model.migrationPlans={};
   model.migrationVerifications={};
   await load();

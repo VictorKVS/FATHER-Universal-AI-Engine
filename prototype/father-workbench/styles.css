@@ -79,3 +79,11 @@ main{padding:27px 32px 60px;overflow:hidden}.top,.hero,.sectionTitle,.panelHead{
 .providerVerifyState{margin-top:8px;padding:5px 6px;border:1px solid #223847;border-radius:6px;font-size:7px}
 .providerVerifyState.pass{border-color:#44d17a55;color:#8ff0ad}
 .providerVerifyState.blocked{border-color:#ff5e6c55;color:#ff98a2}
+
+.providerReviewState{margin-top:6px;padding:5px 6px;border:1px solid #223847;border-radius:6px;font-size:7px}
+.providerReviewState.pass{border-color:#44d17a55;color:#8ff0ad}
+.providerReviewState.blocked{border-color:#ff5e6c55;color:#ff98a2}
+.providerReviewState.waiting{border-color:#f2c94c55;color:#ffe08a}
+.providerSecurityAction{border:1px solid #745b2b;background:#231d0d;color:#ffe08a;border-radius:6px;padding:6px;font-size:7px;cursor:pointer}
+.providerSecurityAction:hover{border-color:#f2c94c88}
+.providerSecurityAction:disabled{opacity:.38;cursor:not-allowed}
