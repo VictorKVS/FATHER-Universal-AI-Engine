@@ -19,8 +19,15 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urlparse
 
-from artifact_engine import apply_artifact_update, list_artifacts, validate_artifact_update
+from artifact_engine import (
+    apply_artifact_update,
+    find_artifact,
+    find_stage,
+    list_artifacts,
+    validate_artifact_update,
+)
 from devsecops_state import evaluate_devsecops_state
+from document_store import DocumentConflictError, DocumentStore
 from evidence_pack import EvidencePackStore, build_evidence_pack
 from evidence_store import EvidenceStore
 from gate_engine import (
@@ -51,6 +58,7 @@ AUDIT_FILE = RUNTIME_DIR / "scm-actions.jsonl"
 EVIDENCE_STORE = EvidenceStore(RUNTIME_DIR)
 EVIDENCE_PACK_STORE = EvidencePackStore(REPO_ROOT)
 PROJECT_STATE_STORE = ProjectStateStore(REPO_ROOT)
+DOCUMENT_STORE = DocumentStore(REPO_ROOT)
 
 MAX_JSON_BODY = 16 * 1024
 
@@ -609,6 +617,142 @@ def export_project_evidence_pack(project_id: str) -> dict[str, Any]:
     }
 
 
+def read_artifact_document(
+    project_id: str,
+    stage_id: str,
+    artifact_id: str,
+) -> dict[str, Any]:
+    project = project_by_id(project_id)
+    if not project:
+        return {
+            "status": "BLOCKED",
+            "errors": ["PROJECT_NOT_FOUND"],
+        }
+    state = project_stage_state(project)
+    stage = find_stage(state, stage_id)
+    if not stage:
+        return {
+            "status": "BLOCKED",
+            "errors": ["STAGE_NOT_FOUND"],
+        }
+    artifact = find_artifact(stage, artifact_id)
+    if not artifact:
+        return {
+            "status": "BLOCKED",
+            "errors": ["ARTIFACT_NOT_FOUND"],
+        }
+    source_ref = str(artifact.get("source_ref") or "").strip()
+    if not source_ref:
+        return {
+            "status": "BLOCKED",
+            "errors": ["ARTIFACT_SOURCE_REF_NOT_REGISTERED"],
+        }
+    try:
+        document = DOCUMENT_STORE.read(source_ref)
+    except ValueError:
+        return {
+            "status": "BLOCKED",
+            "errors": ["DOCUMENT_SOURCE_REF_NOT_ALLOWED"],
+        }
+    return {
+        "status": "OK",
+        "project_id": project_id,
+        "stage_id": stage_id,
+        "artifact_id": artifact_id,
+        "artifact_status": artifact.get("status"),
+        "document": document,
+    }
+
+
+def write_artifact_document(
+    project_id: str,
+    stage_id: str,
+    artifact_id: str,
+    content: str,
+    expected_sha256: str,
+    rationale: str,
+    decided_by: str,
+) -> dict[str, Any]:
+    if not rationale.strip():
+        return {
+            "status": "BLOCKED",
+            "errors": ["RATIONALE_REQUIRED"],
+        }
+    read_result = read_artifact_document(
+        project_id,
+        stage_id,
+        artifact_id,
+    )
+    if read_result.get("status") != "OK":
+        return read_result
+
+    source_ref = read_result["document"]["source_ref"]
+    try:
+        written = DOCUMENT_STORE.write(
+            source_ref,
+            content,
+            expected_sha256,
+        )
+    except DocumentConflictError:
+        latest = DOCUMENT_STORE.read(source_ref)
+        return {
+            "status": "CONFLICT",
+            "errors": ["DOCUMENT_SHA_CONFLICT"],
+            "current_sha256": latest["sha256"],
+        }
+    except (ValueError, json.JSONDecodeError):
+        return {
+            "status": "BLOCKED",
+            "errors": ["DOCUMENT_VALIDATION_FAILED"],
+        }
+
+    if not written["changed"]:
+        return {
+            "status": "NO_CHANGE",
+            "project_id": project_id,
+            "stage_id": stage_id,
+            "artifact_id": artifact_id,
+            "document": written,
+            "git_commit_required": False,
+        }
+
+    payload = {
+        "project_id": project_id,
+        "stage_id": stage_id,
+        "artifact_id": artifact_id,
+        "source_ref": source_ref,
+        "old_sha256": written["old_sha256"],
+        "new_sha256": written["new_sha256"],
+        "size": written["size"],
+        "rationale": rationale.strip(),
+        "decided_by": decided_by.strip() or "HUMAN",
+    }
+    event = EVIDENCE_STORE.append_manufacturing_event(
+        project_id=project_id,
+        event_type="DOCUMENT_CONTENT_UPDATED",
+        source_ref=f"DOCUMENT:{stage_id}:{artifact_id}",
+        payload=payload,
+    )
+    evidence = EVIDENCE_STORE.store_evidence(
+        project_id=project_id,
+        evidence_type="DOCUMENT_CONTENT_CHANGE",
+        provider=None,
+        payload=payload,
+        subject_key=f"{artifact_id}:{written['new_sha256']}",
+        refs={"manufacturing_event_id": event["event_id"]},
+    )
+    return {
+        "status": "UPDATED",
+        "project_id": project_id,
+        "stage_id": stage_id,
+        "artifact_id": artifact_id,
+        "document": written,
+        "evidence": evidence,
+        "manufacturing_event_id": event["event_id"],
+        "git_commit_required": True,
+    }
+
+
 def write_audit_event(event: dict[str, Any]) -> None:
     RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
     with AUDIT_FILE.open("a", encoding="utf-8") as handle:
@@ -989,6 +1133,7 @@ class FatherHandler(BaseHTTPRequestHandler):
                         "artifact_control": True,
                         "traceability_graph": True,
                         "durable_evidence_pack": True,
+                        "safe_document_editor": True,
                     }
                 )
                 return
@@ -1081,6 +1226,23 @@ class FatherHandler(BaseHTTPRequestHandler):
 
                 if len(parts) == 4 and parts[3] == "stages":
                     self._json(project_stage_state(project))
+                    return
+
+                if (
+                    len(parts) == 8
+                    and parts[3] == "stages"
+                    and parts[5] == "artifacts"
+                    and parts[7] == "content"
+                ):
+                    result = read_artifact_document(
+                        project_id,
+                        parts[4],
+                        parts[6],
+                    )
+                    if result["status"] == "OK":
+                        self._json(result)
+                    else:
+                        self._json(result, HTTPStatus.BAD_REQUEST)
                     return
 
                 if len(parts) == 5 and parts[3] == "stages":
@@ -1194,6 +1356,7 @@ class FatherHandler(BaseHTTPRequestHandler):
             "/api/gates/decide",
             "/api/artifacts/upsert",
             "/api/evidence/export",
+            "/api/documents/write",
         }:
             self._error_json(HTTPStatus.NOT_FOUND, "ENDPOINT_NOT_FOUND")
             return
@@ -1284,6 +1447,53 @@ class FatherHandler(BaseHTTPRequestHandler):
                 evidence_refs,
                 decided_by,
                 expected_etag,
+            )
+            if result["status"] == "CONFLICT":
+                self._json(result, HTTPStatus.CONFLICT)
+            elif result["status"] == "BLOCKED":
+                self._json(result, HTTPStatus.BAD_REQUEST)
+            else:
+                self._json(result)
+            return
+
+        if path == "/api/documents/write":
+            if self.headers.get("X-FATHER-Action") != "confirm":
+                self._error_json(
+                    HTTPStatus.FORBIDDEN,
+                    "EXPLICIT_ACTION_HEADER_REQUIRED",
+                )
+                return
+            if body.get("confirm") is not True:
+                self._error_json(
+                    HTTPStatus.FORBIDDEN,
+                    "EXPLICIT_CONFIRMATION_REQUIRED",
+                )
+                return
+            stage_id = str(body.get("stage_id", "")).strip()
+            artifact_id = str(body.get("artifact_id", "")).strip()
+            content = body.get("content")
+            expected_sha256 = str(body.get("expected_sha256", "")).strip()
+            rationale = str(body.get("rationale", "")).strip()
+            decided_by = str(body.get("decided_by", "HUMAN")).strip()
+            if (
+                not stage_id
+                or not artifact_id
+                or not isinstance(content, str)
+                or not expected_sha256
+            ):
+                self._error_json(
+                    HTTPStatus.BAD_REQUEST,
+                    "INVALID_DOCUMENT_WRITE_REQUEST",
+                )
+                return
+            result = write_artifact_document(
+                project_id,
+                stage_id,
+                artifact_id,
+                content,
+                expected_sha256,
+                rationale,
+                decided_by,
             )
             if result["status"] == "CONFLICT":
                 self._json(result, HTTPStatus.CONFLICT)
