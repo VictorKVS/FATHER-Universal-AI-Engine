@@ -27,7 +27,11 @@
     "manufacturing_kb_case_id",
     "dependencies",
     "external_project_refs",
-    "tags"
+    "tags",
+    "project_memory_status",
+    "project_memory_version",
+    "last_memory_review",
+    "revisit_triggers"
   ],
   "stage_states": [
     "NOT_STARTED",
@@ -71,5 +75,11 @@
     "TEST_STATUS",
     "RUNTIME_STATUS"
   ],
-  "manufacturing_kb_relation": "ONE_PROJECT_TO_MANY_EXPERIENCE_RECORDS"
+  "manufacturing_kb_relation": "ONE_PROJECT_TO_MANY_EXPERIENCE_RECORDS",
+  "approved_project_policy": {
+    "retain_completed_project": true,
+    "project_memory_required": true,
+    "full_history_retained_in_manufacturing_kb": true,
+    "rejected_alternatives_retained": true
+  }
 }
