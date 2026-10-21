@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import sys
 import unittest
 from pathlib import Path
 
 APP_DIR = Path(__file__).resolve().parents[1]
 REPO_ROOT = APP_DIR.parents[1]
 SERVER_FILE = APP_DIR / "server.py"
+if str(APP_DIR) not in sys.path:
+    sys.path.insert(0, str(APP_DIR))
 
 spec = importlib.util.spec_from_file_location("father_workbench_server", SERVER_FILE)
 server = importlib.util.module_from_spec(spec)
@@ -85,6 +88,13 @@ class RegistryContractTests(unittest.TestCase):
                 "gitea",
             }.issubset(ids)
         )
+
+    def test_stage_state_projection_matches_project(self) -> None:
+        project = server.project_by_id("FATHER-ACADEMY-OSINT-001")
+        self.assertIsNotNone(project)
+        state = server.project_stage_state(project)
+        self.assertEqual(state["project_id"], project["project_id"])
+        self.assertTrue(state["stages"])
 
     def test_browser_credentials_are_forbidden(self) -> None:
         data = json.loads(
