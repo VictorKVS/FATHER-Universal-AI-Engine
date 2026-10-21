@@ -426,3 +426,23 @@ Project workspace adds:
 Completed projects remain visible in the portfolio with their approved memory, known limitations, last review and revisit triggers.
 
 See `docs/15_FATHER_PROJECT_MEMORY.md`.
+
+
+---
+
+# Git Protocol view
+
+Each project workspace should expose a **Git Protocol** summary:
+
+- current branch/ref;
+- latest commit;
+- stage transition commits;
+- evidence manifests;
+- Security reports;
+- DevSecOps reports;
+- missing required evidence;
+- latest gate status.
+
+Clicking a status should open the exact evidence/report that supports it.
+
+See `docs/16_FATHER_GITHUB_EVIDENCE_PROTOCOL.md`.
