@@ -68,6 +68,41 @@ class GitHubAdapterTests(unittest.TestCase):
         self.assertTrue(result["reconciled"])
         self.assertEqual(result["head_sha"], "base123")
 
+    def test_open_change_request_reconciles_provider_state(self) -> None:
+        adapter = GitHubAdapter(token="token")
+
+        with (
+            patch.object(
+                adapter,
+                "_mutate",
+                return_value={"number": 11},
+            ),
+            patch.object(
+                adapter,
+                "_request",
+                return_value={
+                    "number": 11,
+                    "title": "Prototype PR",
+                    "state": "open",
+                    "draft": True,
+                    "html_url": "https://example.invalid/pr/11",
+                    "head": {"ref": "feature/example", "sha": "abc123"},
+                    "base": {"ref": "main"},
+                },
+            ),
+        ):
+            result = adapter.open_change_request(
+                "owner/repo",
+                "Prototype PR",
+                "feature/example",
+                "main",
+            )
+
+        self.assertTrue(result["reconciled"])
+        self.assertEqual(result["number"], 11)
+        self.assertEqual(result["head_ref"], "feature/example")
+        self.assertEqual(result["base_ref"], "main")
+
     def test_live_state_is_normalized(self) -> None:
         adapter = GitHubAdapter(token="not-used")
 

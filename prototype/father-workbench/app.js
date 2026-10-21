@@ -461,29 +461,63 @@ function renderScmActions(project,state,branch){
         " · provider mutation: "+(plan.provider_mutation?"YES":"NO");
       result.className="actionResult "+(plan.allowed?"ok":"block");
 
-      if(action!=="SCM.CREATE_BRANCH" || !plan.allowed)return;
+      if(!plan.allowed)return;
 
-      const branchName=window.prompt(
-        "New branch name",
-        "feature/"
-      );
-      if(!branchName)return;
+      let params=null;
+      let approved=false;
 
-      const approved=window.confirm(
-        "Create branch '"+branchName+"' from '"+project.branch+"' via FATHER?"
-      );
-      if(!approved)return;
+      if(action==="SCM.CREATE_BRANCH"){
+        const branchName=window.prompt(
+          "New branch name",
+          "feature/"
+        );
+        if(!branchName)return;
 
-      result.textContent="Executing audited branch creation…";
+        approved=window.confirm(
+          "Create branch '"+branchName+"' from '"+project.branch+"' via FATHER?"
+        );
+        if(!approved)return;
+
+        params={
+          branch_name:branchName,
+          base_ref:project.branch
+        };
+        result.textContent="Executing audited branch creation…";
+      }else if(action==="SCM.OPEN_CHANGE_REQUEST"){
+        const title=window.prompt(
+          "Change request title",
+          "FATHER: review current project changes"
+        );
+        if(!title)return;
+
+        const baseRef=window.prompt(
+          "Base branch",
+          "main"
+        );
+        if(!baseRef)return;
+
+        approved=window.confirm(
+          "Open draft change request from '"+project.branch+"' to '"+baseRef+"'?"
+        );
+        if(!approved)return;
+
+        params={
+          title,
+          head_ref:project.branch,
+          base_ref:baseRef,
+          draft:true
+        };
+        result.textContent="Executing audited change request creation…";
+      }else{
+        return;
+      }
+
       result.className="actionResult";
 
       const executed=await executeProviderAction(
         project.project_id,
         action,
-        {
-          branch_name:branchName,
-          base_ref:project.branch
-        }
+        params
       );
       const executeReasons=(executed.reasons||[]).join(", ");
       result.textContent=

@@ -79,6 +79,52 @@ class ExecuteActionTests(unittest.TestCase):
             ["PROVIDER_WRITE_CREDENTIAL_UNAVAILABLE"],
         )
 
+    def test_open_change_request_writes_audit_before_and_after_mutation(self) -> None:
+        events = []
+
+        class WritableAdapter:
+            can_write = True
+
+            def open_change_request(
+                self,
+                repository,
+                title,
+                head_ref,
+                base_ref,
+                body="",
+                draft=True,
+            ):
+                return {
+                    "provider": "github",
+                    "repository": repository,
+                    "number": 5,
+                    "title": title,
+                    "state": "open",
+                    "draft": draft,
+                    "head_ref": head_ref,
+                    "base_ref": base_ref,
+                    "reconciled": True,
+                }
+
+        with (
+            patch.object(server, "GitHubAdapter", return_value=WritableAdapter()),
+            patch.object(server, "write_audit_event", side_effect=events.append),
+        ):
+            result = server.execute_action(
+                "FATHER-PLATFORM-001",
+                "SCM.OPEN_CHANGE_REQUEST",
+                {
+                    "title": "Prototype PR",
+                    "head_ref": "feature/father-project-registry-v01",
+                    "base_ref": "main",
+                    "draft": True,
+                },
+            )
+
+        self.assertTrue(result["allowed"])
+        self.assertEqual(result["status"], "SUCCEEDED")
+        self.assertEqual([event["status"] for event in events], ["EXECUTING", "SUCCEEDED"])
+
     def test_create_branch_writes_audit_before_and_after_mutation(self) -> None:
         events = []
 
