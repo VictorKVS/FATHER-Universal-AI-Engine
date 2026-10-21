@@ -40,6 +40,7 @@ jobs:
         run: |
           python -m py_compile prototype/father-workbench/server.py
           python -m py_compile prototype/father-workbench/evidence_store.py
+          python -m py_compile prototype/father-workbench/providers/base.py
           python -m py_compile prototype/father-workbench/providers/github_adapter.py
           python -m py_compile prototype/father-workbench/providers/gitlab_adapter.py
           python -m py_compile scripts/check_secret_hygiene.py

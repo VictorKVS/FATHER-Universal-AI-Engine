@@ -22,6 +22,80 @@ class GitLabAdapterTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             GitLabAdapter.project_path("project")
 
+    def test_create_branch_requires_write_credential(self) -> None:
+        adapter = GitLabAdapter(token="")
+        with self.assertRaises(ProviderError):
+            adapter.create_branch("group/project", "feature/new", "main")
+
+    def test_create_branch_reconciles_provider_state(self) -> None:
+        adapter = GitLabAdapter(token="token")
+
+        with (
+            patch.object(
+                adapter,
+                "_mutate",
+                return_value={
+                    "name": "feature/new",
+                    "commit": {"id": "base123"},
+                },
+            ),
+            patch.object(
+                adapter,
+                "_request",
+                return_value={
+                    "name": "feature/new",
+                    "commit": {"id": "base123"},
+                    "web_url": "https://gitlab.example/group/project/-/tree/feature/new",
+                },
+            ),
+        ):
+            result = adapter.create_branch(
+                "group/project",
+                "feature/new",
+                "main",
+            )
+
+        self.assertTrue(result["reconciled"])
+        self.assertEqual(result["head_sha"], "base123")
+
+    def test_open_change_request_reconciles_provider_state(self) -> None:
+        adapter = GitLabAdapter(token="token")
+        captured = {}
+
+        def fake_mutate(method, path, payload):
+            captured["payload"] = payload
+            return {"iid": 12}
+
+        with (
+            patch.object(adapter, "_mutate", side_effect=fake_mutate),
+            patch.object(
+                adapter,
+                "_request",
+                return_value={
+                    "iid": 12,
+                    "title": "Draft: Demo MR",
+                    "state": "opened",
+                    "draft": True,
+                    "source_branch": "feature/demo",
+                    "target_branch": "main",
+                    "sha": "abc123",
+                    "web_url": "https://gitlab.example/mr/12",
+                },
+            ),
+        ):
+            result = adapter.open_change_request(
+                "group/project",
+                "Demo MR",
+                "feature/demo",
+                "main",
+                draft=True,
+            )
+
+        self.assertTrue(result["reconciled"])
+        self.assertEqual(result["number"], 12)
+        self.assertEqual(captured["payload"]["title"], "Draft: Demo MR")
+        self.assertEqual(result["head_ref"], "feature/demo")
+
     def test_live_state_is_normalized(self) -> None:
         adapter = GitLabAdapter(
             token="not-used",
