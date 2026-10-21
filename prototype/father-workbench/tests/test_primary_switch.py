@@ -336,7 +336,7 @@ class PrimarySwitchTests(unittest.TestCase):
             )
             self.assertEqual(
                 [item["status"] for item in audit],
-                ["EXECUTING", "SUCCEEDED"],
+                ["EXECUTING", "SUCCEEDED", "APPLIED"],
             )
 
             state, _etag = bindings.read(self.project)
