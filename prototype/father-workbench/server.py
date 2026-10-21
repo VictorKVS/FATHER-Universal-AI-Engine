@@ -20,6 +20,7 @@ from urllib.parse import unquote, urlparse
 
 from evidence_store import EvidenceStore
 from providers.github_adapter import GitHubAdapter, ProviderError
+from providers.gitlab_adapter import GitLabAdapter
 
 APP_DIR = Path(__file__).resolve().parent
 REPO_ROOT = APP_DIR.parents[1]
@@ -103,15 +104,17 @@ def stage_by_id(project: dict[str, Any], stage_id: str) -> dict[str, Any] | None
 def live_provider_state(project: dict[str, Any]) -> dict[str, Any]:
     dev_platform = project.get("dev_platform") or {}
     provider = dev_platform.get("primary_provider")
-    if provider != "github":
-        raise NotImplementedError(f"Provider adapter not implemented: {provider}")
-
     repository = dev_platform.get("repository") or project.get("repository")
     branch = dev_platform.get("branch") or project.get("branch")
     if not repository or not branch:
         raise ValueError("Project has no repository/branch binding")
 
-    return GitHubAdapter().live_state(str(repository), str(branch))
+    if provider == "github":
+        return GitHubAdapter().live_state(str(repository), str(branch))
+    if provider == "gitlab":
+        return GitLabAdapter().live_state(str(repository), str(branch))
+
+    raise NotImplementedError(f"Provider adapter not implemented: {provider}")
 
 
 def provider_state_subject_key(
@@ -518,7 +521,7 @@ class FatherHandler(BaseHTTPRequestHandler):
                             "SCM.OPEN_CHANGE_REQUEST",
                         ],
                         "stage_state_api": True,
-                        "live_provider_read": ["github"],
+                        "live_provider_read": ["github", "gitlab"],
                         "evidence_store": True,
                         "manufacturing_events": True,
                     }

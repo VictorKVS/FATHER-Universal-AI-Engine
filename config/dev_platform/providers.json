@@ -7,7 +7,7 @@
       "name": "GitHub",
       "family": "GITHUB",
       "status": "CONNECTED",
-      "adapter_status": "AVAILABLE",
+      "adapter_status": "IMPLEMENTED_READ_WRITE_LIMITED",
       "capabilities": [
         "REPOSITORIES",
         "BRANCHES",
@@ -17,6 +17,10 @@
         "REVIEWS",
         "CHECKS",
         "RELEASES"
+      ],
+      "write_capabilities": [
+        "SCM.CREATE_BRANCH",
+        "SCM.OPEN_CHANGE_REQUEST"
       ]
     },
     {
@@ -24,7 +28,7 @@
       "name": "GitLab",
       "family": "GITLAB",
       "status": "AVAILABLE",
-      "adapter_status": "PLANNED",
+      "adapter_status": "IMPLEMENTED_READ_ONLY",
       "capabilities": [
         "REPOSITORIES",
         "BRANCHES",
@@ -33,7 +37,8 @@
         "ISSUES",
         "PIPELINES",
         "PACKAGES"
-      ]
+      ],
+      "write_capabilities": []
     },
     {
       "id": "gitverse",
