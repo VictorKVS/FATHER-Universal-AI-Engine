@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FATHER · Project Workbench</title>
+<link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+<div class="shell">
+  <aside class="side">
+    <div class="brand"><b>F</b><div><strong>FATHER</strong><small>ENGINEERING FACTORY</small></div></div>
+    <nav>
+      <div class="active">▦ <span>Projects</span></div>
+      <div>⑂ <span>Git Workspace</span></div>
+      <div>◉ <span>Agents</span></div>
+      <div>◇ <span>Components</span></div>
+      <div>⌘ <span>Knowledge</span></div>
+      <div>◎ <span>Manufacturing KB</span></div>
+      <div>◫ <span>Test Lab</span></div>
+      <div>⌁ <span>Operations</span></div>
+    </nav>
+    <div class="proto"><i></i> PROTOTYPE</div>
+  </aside>
+
+  <main>
+    <header class="top">
+      <div><em>FATHER / PROJECTS</em><h1>Project Workbench</h1></div>
+      <div><span id="snapshot" class="chip">snapshot</span> <button id="refresh">↻ Refresh</button></div>
+    </header>
+
+    <section>
+      <div class="sectionTitle"><div><em>PORTFOLIO</em><h2>Активные проекты</h2></div></div>
+      <div id="projects" class="projectGrid"></div>
+    </section>
+
+    <section class="workspace">
+      <div class="hero">
+        <div><em id="projectId">—</em><h2 id="projectName">—</h2><p id="projectDescription">—</p></div>
+        <div class="heroRight"><span id="projectStatus" class="chip"></span><span id="projectBranch" class="mono"></span></div>
+      </div>
+
+      <div id="kpis" class="kpis"></div>
+
+      <div class="layout">
+        <div class="maincol">
+          <div class="panel">
+            <div class="panelHead"><div><em>PRODUCTION CONVEYOR</em><h3>Этапы производства</h3></div><small>клик → документы / анализ / gate</small></div>
+            <div id="conveyor" class="conveyor"></div>
+          </div>
+
+          <div class="panel">
+            <div class="panelHead"><div><em>STAGE INSPECTOR</em><h3 id="stageTitle">—</h3></div><span id="stageStatus" class="chip"></span></div>
+            <div class="tabs">
+              <button class="tab active" data-tab="overview">Overview</button>
+              <button class="tab" data-tab="documents">Documents</button>
+              <button class="tab" data-tab="analysis">Specialist Analysis</button>
+              <button class="tab" data-tab="security">Security / DevSecOps</button>
+              <button class="tab" data-tab="history">History / Lessons</button>
+            </div>
+            <div id="stageContent" class="stageContent"></div>
+          </div>
+        </div>
+
+        <aside class="rail">
+          <div class="panel">
+            <div class="panelHead"><div><em>SCORECARDS</em><h3>Готовность</h3></div></div>
+            <div id="scorecards" class="scorecards"></div>
+            <p class="note">Scorecard не перекрывает hard blocker.</p>
+          </div>
+          <div class="panel">
+            <div class="panelHead"><div><em>GIT WORKSPACE</em><h3>Ветка проекта</h3></div></div>
+            <div id="gitPanel" class="gitPanel"></div>
+          </div>
+          <div class="panel">
+            <div class="panelHead"><div><em>DEVSECOPS CHECKS</em><h3>Evidence на HEAD</h3></div></div>
+            <div id="checks" class="checks"></div>
+          </div>
+        </aside>
+      </div>
+
+      <div class="panel repoMap">
+        <div class="panelHead"><div><em>REPOSITORY MAP</em><h3>Git-пространство FATHER</h3></div><small>live state ≠ release evidence snapshot</small></div>
+        <div id="gitMap" class="gitMap"></div>
+      </div>
+    </section>
+  </main>
+</div>
+<script src="./app.js"></script>
+</body>
+</html>
