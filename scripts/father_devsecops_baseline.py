@@ -28,8 +28,13 @@ APP_ROOT = ROOT / "prototype" / "father-workbench"
 PYTHON_FILES = (
     APP_ROOT / "server.py",
     APP_ROOT / "evidence_store.py",
+    APP_ROOT / "migration_engine.py",
+    APP_ROOT / "providers" / "base.py",
     APP_ROOT / "providers" / "github_adapter.py",
     APP_ROOT / "providers" / "gitlab_adapter.py",
+    APP_ROOT / "providers" / "gitverse_adapter.py",
+    APP_ROOT / "providers" / "sourcecraft_adapter.py",
+    APP_ROOT / "providers" / "gitflic_adapter.py",
 )
 JS_FILES = (APP_ROOT / "app.js",)
 
