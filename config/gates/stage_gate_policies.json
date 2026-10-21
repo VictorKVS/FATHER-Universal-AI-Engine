@@ -1,0 +1,91 @@
+{
+  "schema_version": "father.stage_gate_policies.v0.1",
+  "accepted_document_statuses": [
+    "PASS",
+    "APPROVED",
+    "FINAL"
+  ],
+  "rules": {
+    "auto_pass_forbidden": true,
+    "pass_requires_human_decision": true,
+    "pass_requires_evidence_refs": true,
+    "pass_requires_rationale": true,
+    "blocked_stage_cannot_pass": true
+  },
+  "stages": {
+    "PD-00": {
+      "required_documents": [
+        "PD-001"
+      ]
+    },
+    "PD-01": {
+      "required_documents": [
+        "PD-002",
+        "PD-003",
+        "PD-004",
+        "PD-005",
+        "PD-006"
+      ]
+    },
+    "PD-02": {
+      "required_documents": [
+        "PD-007",
+        "PD-008",
+        "PD-009",
+        "PD-010",
+        "PD-011",
+        "PD-011A"
+      ]
+    },
+    "DS-02": {
+      "required_documents": [
+        "SEC-ENG"
+      ]
+    },
+    "PD-03": {
+      "required_documents": [
+        "PD-012",
+        "PD-013",
+        "PD-014"
+      ]
+    },
+    "PD-04": {
+      "required_documents": [
+        "PD-015",
+        "PD-016",
+        "PD-017",
+        "PD-018",
+        "PD-019",
+        "PD-020"
+      ]
+    },
+    "PD-05": {
+      "required_documents": [
+        "PD-021",
+        "PD-022",
+        "PD-023",
+        "PD-024",
+        "PD-025",
+        "PD-026",
+        "PD-027"
+      ]
+    },
+    "PD-06": {
+      "required_documents": [
+        "PD-028",
+        "PD-029",
+        "PD-030",
+        "PD-031",
+        "PD-032",
+        "PD-033",
+        "PD-034"
+      ]
+    },
+    "PD-07": {
+      "required_documents": [
+        "PD-035",
+        "PD-036"
+      ]
+    }
+  }
+}
