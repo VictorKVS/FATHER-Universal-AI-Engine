@@ -4,6 +4,9 @@
   "providers": [
     "GITHUB",
     "GITLAB",
+    "GITVERSE",
+    "SOURCECRAFT",
+    "GITFLIC",
     "AZURE_DEVOPS",
     "BITBUCKET",
     "FORGEJO",
@@ -55,5 +58,21 @@
     "post_write_reconciliation": true,
     "browser_secrets_forbidden": true,
     "success_requires_verified_provider_state": true
+  },
+  "provider_lifecycle_actions": [
+    "PROVIDER.CONNECT",
+    "PROVIDER.DISCONNECT",
+    "PROVIDER.SET_PRIMARY",
+    "PROVIDER.ADD_MIRROR",
+    "PROVIDER.MIRROR_REPOSITORY",
+    "PROVIDER.MIGRATE_REPOSITORY",
+    "PROVIDER.VERIFY_MIGRATION",
+    "PROVIDER.SWITCH_PRIMARY",
+    "PROVIDER.DECOMMISSION"
+  ],
+  "rules": {
+    "project_identity_survives_provider_change": true,
+    "provider_is_replaceable": true,
+    "migration_requires_evidence": true
   }
 }
