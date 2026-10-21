@@ -31,6 +31,7 @@ PYTHON_FILES = (
     APP_ROOT / "migration_engine.py",
     APP_ROOT / "gate_engine.py",
     APP_ROOT / "state_store.py",
+    APP_ROOT / "lifecycle_engine.py",
     APP_ROOT / "providers" / "base.py",
     APP_ROOT / "providers" / "github_adapter.py",
     APP_ROOT / "providers" / "gitlab_adapter.py",
