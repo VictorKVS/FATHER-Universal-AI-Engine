@@ -64,6 +64,11 @@ from providers.forgejo_adapter import ForgejoAdapter
 from providers.bitbucket_adapter import BitbucketAdapter
 from providers.azure_devops_adapter import AzureDevOpsAdapter
 from project_health import assess_project_health
+from project_memory import build_project_memory
+from project_memory_store import (
+    ProjectMemoryConflictError,
+    ProjectMemoryStore,
+)
 from production_records import (
     upsert_decision_record,
     upsert_risk_record,
@@ -84,6 +89,7 @@ EVIDENCE_PACK_STORE = EvidencePackStore(REPO_ROOT)
 PROJECT_STATE_STORE = ProjectStateStore(REPO_ROOT)
 DOCUMENT_STORE = DocumentStore(REPO_ROOT)
 PROVIDER_BINDING_STORE = ProviderBindingStore(REPO_ROOT)
+PROJECT_MEMORY_STORE = ProjectMemoryStore(REPO_ROOT)
 MIGRATION_SECURITY_REVIEW_STORE = MigrationSecurityReviewStore(REPO_ROOT)
 MIGRATION_CUTOVER_STORE = MigrationCutoverStore(REPO_ROOT)
 
@@ -1811,6 +1817,128 @@ def capture_live_provider_evidence(
     return evidence
 
 
+def project_memory_preview(project_id: str) -> dict[str, Any]:
+    project = project_by_id(project_id)
+    if not project:
+        return {
+            "status": "BLOCKED",
+            "errors": ["PROJECT_NOT_FOUND"],
+        }
+
+    state, state_etag = PROJECT_STATE_STORE.read(project)
+    health_result = project_health_snapshot(project_id)
+    health = health_result.get("health") or {
+        "overall": "UNKNOWN",
+        "release_ready": False,
+    }
+    evidence_records = EVIDENCE_STORE.list_evidence(project_id)
+    memory = build_project_memory(
+        project=project,
+        state=state,
+        health=health,
+        evidence_records=evidence_records,
+        source_state_etag=state_etag,
+    )
+    stored, stored_etag = PROJECT_MEMORY_STORE.read(project_id)
+    return {
+        "status": "OK",
+        "project_id": project_id,
+        "preview": memory,
+        "stored": stored,
+        "stored_etag": stored_etag,
+    }
+
+
+def generate_project_memory_draft(
+    project_id: str,
+    expected_memory_etag: str | None,
+) -> dict[str, Any]:
+    preview_result = project_memory_preview(project_id)
+    if preview_result.get("status") != "OK":
+        return preview_result
+
+    memory = preview_result["preview"]
+    if memory.get("status") != "DRAFT":
+        return {
+            "status": "BLOCKED",
+            "errors": list(
+                (memory.get("readiness") or {}).get("blockers")
+                or ["PROJECT_MEMORY_NOT_READY"]
+            ),
+            "preview": memory,
+        }
+
+    current_etag = preview_result.get("stored_etag")
+    if current_etag != expected_memory_etag:
+        if not (
+            current_etag is None
+            and expected_memory_etag in {None, ""}
+        ):
+            return {
+                "status": "CONFLICT",
+                "errors": ["PROJECT_MEMORY_ETAG_CONFLICT"],
+                "current_etag": current_etag,
+            }
+
+    project = project_by_id(project_id)
+    if not project:
+        return {
+            "status": "BLOCKED",
+            "errors": ["PROJECT_NOT_FOUND"],
+        }
+    _state, current_state_etag = PROJECT_STATE_STORE.read(project)
+    if current_state_etag != memory.get("source_state_etag"):
+        return {
+            "status": "CONFLICT",
+            "errors": ["PROJECT_STATE_CHANGED_DURING_MEMORY_BUILD"],
+            "current_state_etag": current_state_etag,
+        }
+
+    try:
+        new_etag = PROJECT_MEMORY_STORE.write_draft(
+            memory,
+            expected_memory_etag,
+        )
+    except ProjectMemoryConflictError:
+        _stored, latest_etag = PROJECT_MEMORY_STORE.read(project_id)
+        return {
+            "status": "CONFLICT",
+            "errors": ["PROJECT_MEMORY_ETAG_CONFLICT"],
+            "current_etag": latest_etag,
+        }
+
+    evidence = EVIDENCE_STORE.store_evidence(
+        project_id=project_id,
+        evidence_type="PROJECT_MEMORY_DRAFT",
+        provider=None,
+        payload=memory,
+        subject_key=f"PROJECT_MEMORY_DRAFT:{new_etag}",
+        refs={
+            "source_state_etag": str(memory.get("source_state_etag") or ""),
+        },
+    )
+    event = EVIDENCE_STORE.append_manufacturing_event(
+        project_id=project_id,
+        event_type="PROJECT_MEMORY_DRAFT_GENERATED",
+        source_ref=evidence["evidence_id"],
+        payload={
+            "memory_etag": new_etag,
+            "source_state_etag": memory.get("source_state_etag"),
+            "evidence_id": evidence["evidence_id"],
+        },
+    )
+    return {
+        "status": "APPLIED",
+        "project_id": project_id,
+        "memory": memory,
+        "memory_etag": new_etag,
+        "evidence": evidence,
+        "manufacturing_event_id": event["event_id"],
+        "worktree_change": True,
+        "git_commit_required": True,
+    }
+
+
 def project_health_snapshot(project_id: str) -> dict[str, Any]:
     project = project_by_id(project_id)
     if not project:
@@ -2973,6 +3101,8 @@ class FatherHandler(BaseHTTPRequestHandler):
                         "provider_connection_test": True,
                         "manual_primary_rollback": True,
                         "project_health": True,
+                        "project_memory_preview": True,
+                        "project_memory_draft": True,
                         "provider_primary_switch": "CUTOVER_GATED",
                         "migration_security_review": True,
                         "migration_cutover_approval": True,
@@ -3063,6 +3193,14 @@ class FatherHandler(BaseHTTPRequestHandler):
                             "artifacts": list_artifacts(state),
                         }
                     )
+                    return
+
+                if (
+                    len(parts) == 5
+                    and parts[3] == "project-memory"
+                    and parts[4] == "preview"
+                ):
+                    self._json(project_memory_preview(project_id))
                     return
 
                 if len(parts) == 4 and parts[3] == "health":
@@ -3242,6 +3380,7 @@ class FatherHandler(BaseHTTPRequestHandler):
             "/api/migrations/switch-primary",
             "/api/migrations/rollback-primary",
             "/api/providers/test-connection",
+            "/api/project-memory/generate",
             "/api/gates/recalculate",
             "/api/gates/decide",
             "/api/artifacts/upsert",
@@ -3564,6 +3703,34 @@ class FatherHandler(BaseHTTPRequestHandler):
                 decided_by,
                 expected_etag,
                 source_ref,
+            )
+            if result["status"] == "CONFLICT":
+                self._json(result, HTTPStatus.CONFLICT)
+            elif result["status"] == "BLOCKED":
+                self._json(result, HTTPStatus.BAD_REQUEST)
+            else:
+                self._json(result)
+            return
+
+        if path == "/api/project-memory/generate":
+            if self.headers.get("X-FATHER-Action") != "confirm":
+                self._error_json(
+                    HTTPStatus.FORBIDDEN,
+                    "EXPLICIT_ACTION_HEADER_REQUIRED",
+                )
+                return
+            if body.get("confirm") is not True:
+                self._error_json(
+                    HTTPStatus.FORBIDDEN,
+                    "EXPLICIT_CONFIRMATION_REQUIRED",
+                )
+                return
+            expected_memory_etag = body.get("expected_memory_etag")
+            if expected_memory_etag is not None:
+                expected_memory_etag = str(expected_memory_etag).strip()
+            result = generate_project_memory_draft(
+                project_id,
+                expected_memory_etag,
             )
             if result["status"] == "CONFLICT":
                 self._json(result, HTTPStatus.CONFLICT)
