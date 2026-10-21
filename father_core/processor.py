@@ -12,7 +12,7 @@ from father_core.contracts import (
     ModelRequest,
     RunEvidence,
     RunResult,
-    sha256_value,
+    message_content_digest,
     utc_now,
 )
 
@@ -161,11 +161,9 @@ class UniversalProcessor:
             started_at=started_at,
             finished_at=finished_at,
             status=status,
-            input_sha256=sha256_value(
-                input_envelope.to_dict()
-            ),
+            input_sha256=message_content_digest(input_envelope),
             output_sha256=(
-                sha256_value(output_envelope.to_dict())
+                message_content_digest(output_envelope)
                 if output_envelope
                 else None
             ),

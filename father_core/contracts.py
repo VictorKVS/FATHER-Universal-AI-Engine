@@ -27,6 +27,17 @@ def sha256_value(value: Any) -> str:
     return hashlib.sha256(canonical_json(value).encode("utf-8")).hexdigest()
 
 
+def message_content_digest(message: "MessageEnvelope") -> str:
+    """Stable digest of observable message content, excluding runtime identity."""
+    return sha256_value(
+        {
+            "content_type": message.content_type,
+            "payload": message.payload,
+            "constraints": message.constraints,
+        }
+    )
+
+
 @dataclass(frozen=True)
 class MessageEnvelope:
     schema_version: str

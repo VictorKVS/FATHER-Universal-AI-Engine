@@ -65,6 +65,25 @@ class FactoryCellTests(unittest.TestCase):
             result.output.constraints["hidden_reasoning_persistence"]
         )
 
+    def test_same_semantic_input_has_stable_evidence_hash(self) -> None:
+        cell = FactoryCell(
+            repo_root=REPO_ROOT,
+            cell_id="CELL-001",
+            test_mode=True,
+        )
+        first = cell.run({"task": "same"})
+        second = cell.run({"task": "same"})
+
+        self.assertNotEqual(first.run_id, second.run_id)
+        self.assertNotEqual(
+            first.input.message_id,
+            second.input.message_id,
+        )
+        self.assertEqual(
+            first.evidence.input_sha256,
+            second.evidence.input_sha256,
+        )
+
     def test_json_input_passes_same_processor(self) -> None:
         cell = FactoryCell(
             repo_root=REPO_ROOT,
