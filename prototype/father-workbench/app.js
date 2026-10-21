@@ -14,6 +14,7 @@ let model={
   manufacturingEvents:{},
   traceability:{},
   devsecopsStates:{},
+  healthStates:{},
   evidencePacks:{},
   providerBindings:{},
   migrationSecurity:{},
@@ -116,6 +117,10 @@ async function loadRuntimeHistory(project){
     ["/api/projects/"+projectId+"/devsecops/current"],
     null
   );
+  const health=await readFirst(
+    ["/api/projects/"+projectId+"/health"],
+    null
+  );
   const packs=await readFirst(
     ["/api/projects/"+projectId+"/evidence-packs"],
     {packs:[]}
@@ -136,6 +141,7 @@ async function loadRuntimeHistory(project){
   model.manufacturingEvents[project.project_id]=events.events||[];
   model.traceability[project.project_id]=traceability;
   model.devsecopsStates[project.project_id]=devsecops?.devsecops||null;
+  model.healthStates[project.project_id]=health?.health||null;
   model.evidencePacks[project.project_id]=packs.packs||[];
   model.providerBindings[project.project_id]=bindings;
   model.migrationSecurity[project.project_id]=migrationSecurity;
@@ -277,6 +283,7 @@ function renderWorkspace(){
     (activeBinding?.branch||"branch TBD");
 
   renderKpis(project,state,branch);
+  renderHealth(project);
   renderConveyor(state);
   renderInspector(state);
   renderScorecards(state);
@@ -1226,6 +1233,38 @@ function historyHtml(stage,projectId){
   return '<em>HISTORY</em>'+events+
     '<div style="height:13px"></div><em>MANUFACTURING EVENTS</em>'+manufacturing+
     '<div style="height:13px"></div><em>LESSONS LEARNED</em>'+learned;
+}
+
+function renderHealth(project){
+  const health=model.healthStates[project.project_id];
+  const overall=byId("healthOverall");
+  const panel=byId("healthPanel");
+  if(!health){
+    overall.textContent="UNKNOWN";
+    overall.className="chip idle";
+    panel.innerHTML='<div class="empty">Health snapshot unavailable.</div>';
+    return;
+  }
+  overall.textContent=health.overall||"UNKNOWN";
+  overall.className="chip "+stateClass(
+    health.overall==="RELEASE_READY"?"PASS":health.overall
+  );
+
+  const dims=Object.entries(health.dimensions||{});
+  panel.innerHTML=
+    '<div class="healthRows">'+
+    dims.map(([name,item])=>
+      '<div class="healthRow">'+
+        '<span>'+esc(name)+'</span>'+
+        '<strong class="'+stateClass(item.status)+'">'+esc(item.status||"UNKNOWN")+'</strong>'+
+      '</div>'
+    ).join("")+
+    '</div>'+
+    (health.hard_blockers?.length
+      ?'<div class="healthBlockers"><em>HARD BLOCKERS</em>'+
+        health.hard_blockers.map((item)=>'<div>'+esc(item)+'</div>').join("")+
+        '</div>'
+      :'<div class="healthOk">No hard blockers recorded.</div>');
 }
 
 function renderScorecards(state){
@@ -2330,6 +2369,7 @@ byId("refresh").onclick=async()=>{
   model.manufacturingEvents={};
   model.traceability={};
   model.devsecopsStates={};
+  model.healthStates={};
   model.evidencePacks={};
   model.providerBindings={};
   model.migrationSecurity={};
