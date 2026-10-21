@@ -63,6 +63,7 @@ from providers.gitea_adapter import GiteaAdapter
 from providers.forgejo_adapter import ForgejoAdapter
 from providers.bitbucket_adapter import BitbucketAdapter
 from providers.azure_devops_adapter import AzureDevOpsAdapter
+from project_health import assess_project_health
 from production_records import (
     upsert_decision_record,
     upsert_risk_record,
@@ -1810,6 +1811,71 @@ def capture_live_provider_evidence(
     return evidence
 
 
+def project_health_snapshot(project_id: str) -> dict[str, Any]:
+    project = project_by_id(project_id)
+    if not project:
+        return {
+            "status": "BLOCKED",
+            "errors": ["PROJECT_NOT_FOUND"],
+        }
+
+    state, state_etag = PROJECT_STATE_STORE.read(project)
+    bindings, binding_etag = PROVIDER_BINDING_STORE.read(project)
+    evidence_records = EVIDENCE_STORE.list_evidence(project_id)
+
+    devsecops = None
+    provider_error = None
+    try:
+        live = live_provider_state(project)
+        devsecops = evaluate_devsecops_state(live)
+    except (ProviderError, ValueError, NotImplementedError) as exc:
+        provider_error = type(exc).__name__
+
+    health = assess_project_health(
+        project=project,
+        state=state,
+        bindings=bindings,
+        devsecops=devsecops,
+        evidence_count=len(evidence_records),
+    )
+    health["state_etag"] = state_etag
+    health["binding_etag"] = binding_etag
+    if provider_error:
+        health["provider_read_error"] = provider_error
+
+    evidence = None
+    try:
+        evidence = EVIDENCE_STORE.store_evidence(
+            project_id=project_id,
+            evidence_type="PROJECT_HEALTH_SNAPSHOT",
+            provider=str(
+                (bindings.get("primary") or {}).get("provider") or ""
+            ),
+            payload=health,
+            subject_key=(
+                f"HEALTH:{state_etag[:16]}:{binding_etag[:16]}:"
+                f"{(devsecops or {}).get('head_sha') or 'NO_HEAD'}:"
+                f"{health.get('overall')}"
+            ),
+            refs={
+                "state_etag": state_etag,
+                "binding_etag": binding_etag,
+                "head_sha": str(
+                    (devsecops or {}).get("head_sha") or ""
+                ),
+            },
+        )
+    except OSError:
+        pass
+
+    return {
+        "status": "OK",
+        "project_id": project_id,
+        "health": health,
+        "evidence": evidence,
+    }
+
+
 def recalculate_gate(
     project_id: str,
     stage_id: str,
@@ -2906,6 +2972,7 @@ class FatherHandler(BaseHTTPRequestHandler):
                         "migration_parity_verification": True,
                         "provider_connection_test": True,
                         "manual_primary_rollback": True,
+                        "project_health": True,
                         "provider_primary_switch": "CUTOVER_GATED",
                         "migration_security_review": True,
                         "migration_cutover_approval": True,
@@ -2996,6 +3063,10 @@ class FatherHandler(BaseHTTPRequestHandler):
                             "artifacts": list_artifacts(state),
                         }
                     )
+                    return
+
+                if len(parts) == 4 and parts[3] == "health":
+                    self._json(project_health_snapshot(project_id))
                     return
 
                 if len(parts) == 4 and parts[3] == "traceability":
