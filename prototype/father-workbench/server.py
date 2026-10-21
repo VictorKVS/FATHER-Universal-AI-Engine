@@ -19,6 +19,7 @@ from typing import Any
 from urllib.parse import unquote, urlparse
 
 from evidence_store import EvidenceStore
+from migration_engine import build_migration_plan
 from providers.base import ProviderError
 from providers.github_adapter import GitHubAdapter
 from providers.gitlab_adapter import GitLabAdapter
@@ -89,6 +90,51 @@ def provider_supports_action(provider_id: str, action: str) -> bool:
     if not provider:
         return False
     return action in set(provider.get("write_capabilities") or [])
+
+
+def provider_runtime_catalog() -> dict[str, Any]:
+    registry = read_json(PROVIDERS_FILE)
+    runtime: list[dict[str, Any]] = []
+    for provider in registry.get("providers", []):
+        provider_id = str(provider.get("id") or "")
+        try:
+            adapter = provider_adapter(provider_id)
+            adapter_loaded = True
+            credential_configured = bool(
+                getattr(adapter, "_token", None)
+            )
+        except NotImplementedError:
+            adapter_loaded = False
+            credential_configured = False
+
+        runtime.append(
+            {
+                "id": provider_id,
+                "adapter_status": provider.get("adapter_status"),
+                "adapter_loaded": adapter_loaded,
+                "credential_configured": credential_configured,
+                "write_capabilities": provider.get("write_capabilities") or [],
+                "draft_change_request_supported": provider.get(
+                    "draft_change_request_supported"
+                ),
+                "branch_create_status": provider.get("branch_create_status"),
+                "write_discovery_status": provider.get("write_discovery_status"),
+            }
+        )
+
+    return {
+        "schema_version": "father.dev_platform.runtime.v0.1",
+        "providers": runtime,
+    }
+
+
+def provider_write_capabilities() -> dict[str, list[str]]:
+    registry = read_json(PROVIDERS_FILE)
+    return {
+        str(provider.get("id")): list(provider.get("write_capabilities") or [])
+        for provider in registry.get("providers", [])
+        if provider.get("write_capabilities")
+    }
 
 
 def branch_state(project: dict[str, Any]) -> dict[str, Any] | None:
@@ -570,16 +616,7 @@ class FatherHandler(BaseHTTPRequestHandler):
                         "status": "ok",
                         "service": "father-project-workbench",
                         "version": "0.2",
-                        "provider_mutations": {
-                            "github": [
-                                "SCM.CREATE_BRANCH",
-                                "SCM.OPEN_CHANGE_REQUEST",
-                            ],
-                            "gitlab": [
-                                "SCM.CREATE_BRANCH",
-                                "SCM.OPEN_CHANGE_REQUEST",
-                            ],
-                        },
+                        "provider_mutations": provider_write_capabilities(),
                         "stage_state_api": True,
                         "live_provider_read": [
                             "github",
@@ -600,6 +637,10 @@ class FatherHandler(BaseHTTPRequestHandler):
 
             if path == "/api/providers":
                 self._json(read_json(PROVIDERS_FILE))
+                return
+
+            if path == "/api/providers/runtime":
+                self._json(provider_runtime_catalog())
                 return
 
             if path == "/api/git-snapshot":
@@ -710,7 +751,11 @@ class FatherHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:  # noqa: N802
         path = urlparse(self.path).path
-        if path not in {"/api/actions/plan", "/api/actions/execute"}:
+        if path not in {
+            "/api/actions/plan",
+            "/api/actions/execute",
+            "/api/migrations/plan",
+        }:
             self._error_json(HTTPStatus.NOT_FOUND, "ENDPOINT_NOT_FOUND")
             return
 
@@ -736,9 +781,44 @@ class FatherHandler(BaseHTTPRequestHandler):
             return
 
         project_id = str(body.get("project_id", "")).strip()
+        if not project_id:
+            self._error_json(HTTPStatus.BAD_REQUEST, "PROJECT_REQUIRED")
+            return
+
+        if path == "/api/migrations/plan":
+            target_provider = str(body.get("target_provider", "")).strip()
+            if not target_provider:
+                self._error_json(
+                    HTTPStatus.BAD_REQUEST,
+                    "TARGET_PROVIDER_REQUIRED",
+                )
+                return
+            project = project_by_id(project_id)
+            if not project:
+                self._error_json(HTTPStatus.NOT_FOUND, "PROJECT_NOT_FOUND")
+                return
+            plan = build_migration_plan(
+                project,
+                target_provider,
+                read_json(PROVIDERS_FILE),
+            )
+            EVIDENCE_STORE.append_manufacturing_event(
+                project_id=project_id,
+                event_type="MIGRATION_PLAN_CREATED",
+                source_ref=plan["plan_id"],
+                payload={
+                    "source_provider": plan["source_provider"],
+                    "target_provider": plan["target_provider"],
+                    "state": plan["state"],
+                    "blockers": plan["blockers"],
+                },
+            )
+            self._json(plan)
+            return
+
         action = str(body.get("action", "")).strip()
-        if not project_id or not action:
-            self._error_json(HTTPStatus.BAD_REQUEST, "PROJECT_AND_ACTION_REQUIRED")
+        if not action:
+            self._error_json(HTTPStatus.BAD_REQUEST, "ACTION_REQUIRED")
             return
 
         if path == "/api/actions/plan":
@@ -802,7 +882,7 @@ def main() -> None:
 
     server = ThreadingHTTPServer((args.host, args.port), FatherHandler)
     print(f"FATHER Project Workbench: http://{args.host}:{args.port}/")
-    print("External provider mutations: DISABLED")
+    print("External provider mutations: LIMITED / POLICY-GATED")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
