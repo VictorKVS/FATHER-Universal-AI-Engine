@@ -31,6 +31,14 @@ class GitLabAdapter:
         self._api_url = self._base_url + "/api/v4"
         self._timeout = timeout
 
+    @property
+    def can_write(self) -> bool:
+        return bool(self._token)
+
+    @staticmethod
+    def validate_branch_name(value: str) -> str:
+        return validate_branch_name(value)
+
     @staticmethod
     def project_path(repository: str) -> str:
         value = repository.strip().strip("/")
@@ -64,6 +72,152 @@ class GitLabAdapter:
             raise ProviderError(f"GitLab network error: {exc.reason}") from None
         except (UnicodeDecodeError, json.JSONDecodeError):
             raise ProviderError("GitLab returned invalid JSON") from None
+
+    def _mutate(
+        self,
+        method: str,
+        path: str,
+        payload: dict[str, Any],
+    ) -> Any:
+        if not self._token:
+            raise ProviderError("GitLab write credential unavailable")
+
+        encoded_payload: dict[str, str] = {}
+        for key, value in payload.items():
+            if isinstance(value, bool):
+                encoded_payload[key] = "true" if value else "false"
+            elif value is not None:
+                encoded_payload[key] = str(value)
+
+        body = urlencode(encoded_payload).encode("utf-8")
+        headers = {
+            "Accept": "application/json",
+            "Content-Type": "application/x-www-form-urlencoded",
+            "User-Agent": "FATHER-Control-Plane/0.1",
+            "PRIVATE-TOKEN": self._token,
+        }
+        request = Request(
+            self._api_url + path,
+            data=body,
+            headers=headers,
+            method=method,
+        )
+        try:
+            with urlopen(request, timeout=self._timeout) as response:
+                raw = response.read()
+                return json.loads(raw.decode("utf-8")) if raw else {}
+        except HTTPError as exc:
+            raise ProviderError(f"GitLab HTTP {exc.code}") from None
+        except URLError as exc:
+            raise ProviderError(f"GitLab network error: {exc.reason}") from None
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            raise ProviderError("GitLab returned invalid JSON") from None
+
+    def create_branch(
+        self,
+        repository: str,
+        branch_name: str,
+        base_ref: str,
+    ) -> dict[str, Any]:
+        branch_name = self.validate_branch_name(branch_name)
+        base_ref = self.validate_branch_name(base_ref)
+        project_path = self.project_path(repository)
+        encoded_project = quote(project_path, safe="")
+
+        created = self._mutate(
+            "POST",
+            f"/projects/{encoded_project}/repository/branches",
+            {
+                "branch": branch_name,
+                "ref": base_ref,
+            },
+        )
+        created_sha = (created.get("commit") or {}).get("id")
+
+        reconciled = self._request(
+            f"/projects/{encoded_project}/repository/branches/"
+            f"{quote(branch_name, safe='')}"
+        )
+        reconciled_sha = (reconciled.get("commit") or {}).get("id")
+        if not reconciled_sha or reconciled.get("name") != branch_name:
+            raise ProviderError("GitLab branch reconciliation mismatch")
+        if created_sha and created_sha != reconciled_sha:
+            raise ProviderError("GitLab branch SHA reconciliation mismatch")
+
+        return {
+            "provider": self.provider_id,
+            "repository": repository,
+            "branch": branch_name,
+            "base_ref": base_ref,
+            "head_sha": reconciled_sha,
+            "provider_created_sha": created_sha,
+            "web_url": reconciled.get("web_url"),
+            "reconciled": True,
+        }
+
+    def open_change_request(
+        self,
+        repository: str,
+        title: str,
+        head_ref: str,
+        base_ref: str,
+        body: str = "",
+        draft: bool = True,
+    ) -> dict[str, Any]:
+        if not self._token:
+            raise ProviderError("GitLab write credential unavailable")
+
+        title = title.strip()
+        if not title or len(title) > 200:
+            raise ValueError("Merge request title must be 1..200 characters")
+
+        head_ref = self.validate_branch_name(head_ref)
+        base_ref = self.validate_branch_name(base_ref)
+        project_path = self.project_path(repository)
+        encoded_project = quote(project_path, safe="")
+
+        provider_title = title
+        if draft and not provider_title.lower().startswith("draft:"):
+            provider_title = "Draft: " + provider_title
+
+        created = self._mutate(
+            "POST",
+            f"/projects/{encoded_project}/merge_requests",
+            {
+                "source_branch": head_ref,
+                "target_branch": base_ref,
+                "title": provider_title,
+                "description": body[:10000],
+            },
+        )
+        iid = created.get("iid")
+        if not isinstance(iid, int):
+            raise ProviderError("GitLab merge request response has no IID")
+
+        reconciled = self._request(
+            f"/projects/{encoded_project}/merge_requests/{iid}"
+        )
+        if (
+            reconciled.get("state") != "opened"
+            or reconciled.get("source_branch") != head_ref
+            or reconciled.get("target_branch") != base_ref
+        ):
+            raise ProviderError("GitLab merge request reconciliation mismatch")
+
+        return {
+            "provider": self.provider_id,
+            "repository": repository,
+            "change_request_type": "merge_request",
+            "number": iid,
+            "title": reconciled.get("title", provider_title),
+            "state": reconciled.get("state"),
+            "draft": reconciled.get("draft"),
+            "head_ref": reconciled.get("source_branch"),
+            "base_ref": reconciled.get("target_branch"),
+            "head_sha": reconciled.get("sha"),
+            "html_url": reconciled.get("web_url"),
+            "reconciled": True,
+        }
 
     @staticmethod
     def _compact_mr(value: dict[str, Any]) -> dict[str, Any]:
