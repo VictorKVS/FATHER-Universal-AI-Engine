@@ -10,7 +10,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 
-from providers.base import ProviderError
+from providers.base import ProviderError, validate_branch_name
 
 
 class GitVerseAdapter:
@@ -30,6 +30,14 @@ class GitVerseAdapter:
             )
         ).rstrip("/")
         self._timeout = timeout
+
+    @property
+    def can_write(self) -> bool:
+        return bool(self._token)
+
+    @staticmethod
+    def validate_branch_name(value: str) -> str:
+        return validate_branch_name(value)
 
     @staticmethod
     def split_repository(repository: str) -> tuple[str, str]:
@@ -60,6 +68,86 @@ class GitVerseAdapter:
             raise ProviderError(f"GitVerse network error: {exc.reason}") from None
         except (UnicodeDecodeError, json.JSONDecodeError):
             raise ProviderError("GitVerse returned invalid JSON") from None
+
+    def _mutate(
+        self,
+        method: str,
+        path: str,
+        payload: dict[str, Any],
+    ) -> Any:
+        if not self._token:
+            raise ProviderError("GitVerse write credential unavailable")
+
+        body = json.dumps(payload).encode("utf-8")
+        headers = {
+            "Accept": "application/vnd.gitverse.object+json;version=1",
+            "Content-Type": "application/json",
+            "User-Agent": "FATHER-Control-Plane/0.1",
+            "Authorization": f"Bearer {self._token}",
+        }
+        request = Request(
+            self._base_url + path,
+            data=body,
+            headers=headers,
+            method=method,
+        )
+        try:
+            with urlopen(request, timeout=self._timeout) as response:
+                raw = response.read()
+                return json.loads(raw.decode("utf-8")) if raw else {}
+        except HTTPError as exc:
+            raise ProviderError(f"GitVerse HTTP {exc.code}") from None
+        except URLError as exc:
+            raise ProviderError(f"GitVerse network error: {exc.reason}") from None
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            raise ProviderError("GitVerse returned invalid JSON") from None
+
+    def create_branch(
+        self,
+        repository: str,
+        branch_name: str,
+        base_ref: str,
+    ) -> dict[str, Any]:
+        branch_name = self.validate_branch_name(branch_name)
+        base_ref = self.validate_branch_name(base_ref)
+        owner, name = self.split_repository(repository)
+        repo_path = f"/repos/{quote(owner, safe='')}/{quote(name, safe='')}"
+
+        base = self._request(
+            f"{repo_path}/branches/{quote(base_ref, safe='')}"
+        )
+        base_sha = self._head_sha(base)
+        if not base_sha:
+            raise ProviderError("GitVerse base branch response has no head SHA")
+
+        created = self._mutate(
+            "POST",
+            f"{repo_path}/git/refs",
+            {
+                "ref": f"refs/heads/{branch_name}",
+                "sha": base_sha,
+            },
+        )
+        created_sha = (created.get("object") or {}).get("sha")
+        if created.get("ref") != f"refs/heads/{branch_name}":
+            raise ProviderError("GitVerse created ref mismatch")
+
+        reconciled = self._request(
+            f"{repo_path}/branches/{quote(branch_name, safe='')}"
+        )
+        reconciled_sha = self._head_sha(reconciled)
+        if reconciled_sha != base_sha:
+            raise ProviderError("GitVerse branch reconciliation mismatch")
+
+        return {
+            "provider": self.provider_id,
+            "repository": repository,
+            "branch": branch_name,
+            "base_ref": base_ref,
+            "head_sha": reconciled_sha,
+            "provider_created_sha": created_sha,
+            "reconciled": True,
+        }
 
     @staticmethod
     def _head_sha(branch_data: dict[str, Any]) -> str | None:
