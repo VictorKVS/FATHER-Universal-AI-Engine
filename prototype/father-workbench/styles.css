@@ -43,3 +43,14 @@ main{padding:27px 32px 60px;overflow:hidden}.top,.hero,.sectionTitle,.panelHead{
 .gateOutput{margin-top:9px;border:1px solid #223847aa;border-radius:7px;padding:8px;color:var(--muted);font-size:8px;line-height:1.5}
 .gateOutput.ok{border-color:#44d17a44;color:#9ce8b4}
 .gateOutput.block{border-color:#ff5e6c44;color:#ff9eaa}
+
+.artifactToolbar{display:flex;justify-content:space-between;align-items:center;gap:9px;margin-bottom:10px;color:var(--muted);font-size:8px}
+.artifactActions{display:flex;gap:5px;align-items:center;justify-content:flex-end}
+.miniAction{border:1px solid #2b4657;background:#0b1b25;color:#dceaf2;border-radius:6px;padding:3px 6px;font-size:7px;cursor:pointer}
+.traceWarning{margin:10px 0;border:1px solid #ff5e6c55;background:#ff5e6c0d;color:#ff9eaa;border-radius:7px;padding:8px;font-size:8px}
+.traceKinds{display:flex;flex-wrap:wrap;gap:5px;margin:12px 0}
+.traceKinds span{border:1px solid #223847aa;border-radius:999px;padding:4px 7px;color:var(--muted);font-size:7px}
+.traceKinds b{color:#dceaf2}
+.traceEdges{display:grid;gap:5px}
+.traceEdge{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);gap:7px;align-items:center;border:1px solid #22384788;border-radius:7px;padding:7px;font:7px Consolas,monospace;color:var(--muted)}
+.traceEdge b{color:var(--cyan);font:7px Inter,system-ui}

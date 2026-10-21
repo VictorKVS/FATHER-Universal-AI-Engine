@@ -11,6 +11,8 @@ let model={
   liveStates:{},
   evidenceStates:{},
   manufacturingEvents:{},
+  traceability:{},
+  devsecopsStates:{},
   migrationPlans:{}
 };
 let selectedProject=null;
@@ -85,8 +87,18 @@ async function loadRuntimeHistory(project){
     ["/api/projects/"+projectId+"/manufacturing-events"],
     {events:[]}
   );
+  const traceability=await readFirst(
+    ["/api/projects/"+projectId+"/traceability"],
+    null
+  );
+  const devsecops=await readFirst(
+    ["/api/projects/"+projectId+"/devsecops/current"],
+    null
+  );
   model.evidenceStates[project.project_id]=evidence.evidence||[];
   model.manufacturingEvents[project.project_id]=events.events||[];
+  model.traceability[project.project_id]=traceability;
+  model.devsecopsStates[project.project_id]=devsecops?.devsecops||null;
 }
 
 async function loadLiveState(project){
@@ -311,10 +323,12 @@ function renderInspector(state){
   if(activeTab==="documents")host.innerHTML=documentsHtml(stage);
   else if(activeTab==="analysis")host.innerHTML=analysisHtml(stage);
   else if(activeTab==="security")host.innerHTML=securityHtml(stage,state);
+  else if(activeTab==="traceability")host.innerHTML=traceabilityHtml(selectedProject,stage.id);
   else if(activeTab==="history")host.innerHTML=historyHtml(stage,selectedProject);
   else host.innerHTML=overviewHtml(stage);
 
   wireGateControls(state,stage);
+  wireArtifactControls(state,stage);
 }
 
 function overviewHtml(stage){
@@ -498,14 +512,193 @@ function wireGateControls(state,stage){
 
 function documentsHtml(stage){
   const docs=stage.documents?.items||[];
-  if(!docs.length)return'<div class="empty">Документы этапа ещё не созданы.</div>';
-  return '<div class="rows">'+docs.map((item)=>
-    '<div class="row">'+
-      '<span class="code">'+esc(item.id)+'</span>'+
-      '<span>'+esc(item.title)+'</span>'+
-      '<span class="pill '+esc(item.status)+'">'+esc(item.status)+'</span>'+
-    '</div>'
-  ).join("")+'</div>';
+  const rows=docs.length
+    ?'<div class="rows">'+docs.map((item)=>
+      '<div class="row artifactRow">'+
+        '<span class="code">'+esc(item.id)+'</span>'+
+        '<span>'+esc(item.title)+'</span>'+
+        '<span class="artifactActions">'+
+          '<span class="pill '+esc(item.status)+'">'+esc(item.status)+'</span>'+
+          '<button class="miniAction" data-artifact-edit="'+esc(item.id)+'">Edit</button>'+
+        '</span>'+
+      '</div>'
+    ).join("")+'</div>'
+    :'<div class="empty">Документы этапа ещё не созданы.</div>';
+  return '<div class="artifactToolbar">'+
+      '<button class="gateBtn" data-artifact-add="1">+ Register artifact</button>'+
+      '<span>PASS требует rationale + evidence refs</span>'+
+    '</div>'+rows;
+}
+
+async function loadArtifactState(projectId){
+  return await readFirst(
+    ["/api/projects/"+encodeURIComponent(projectId)+"/artifacts"],
+    null
+  );
+}
+
+async function submitArtifactUpdate(projectId,payload){
+  try{
+    const response=await fetch("/api/artifacts/upsert",{
+      method:"POST",
+      headers:{
+        "Content-Type":"application/json",
+        "X-FATHER-Action":"confirm"
+      },
+      body:JSON.stringify({
+        project_id:projectId,
+        confirm:true,
+        ...payload
+      })
+    });
+    const body=await response.json().catch(()=>({}));
+    return{http_status:response.status,...body};
+  }catch(_error){
+    return{
+      status:"BLOCKED",
+      errors:["CONTROL_PLANE_API_UNAVAILABLE"]
+    };
+  }
+}
+
+function wireArtifactControls(state,stage){
+  if(activeTab!=="documents")return;
+
+  const apply=async(existing)=>{
+    const artifactId=(window.prompt(
+      "Artifact / document ID",
+      existing?.id||""
+    )||"").trim();
+    if(!artifactId)return;
+
+    const title=(window.prompt(
+      "Artifact title",
+      existing?.title||""
+    )||"").trim();
+    if(!title)return;
+
+    const status=(window.prompt(
+      "Status: DRAFT / IN_REVIEW / PASS / FAIL / BLOCKED / TBD",
+      existing?.status||"DRAFT"
+    )||"").trim().toUpperCase();
+    if(!status)return;
+
+    const rationale=(window.prompt(
+      "Why is this status correct? (required)",
+      ""
+    )||"").trim();
+    if(!rationale)return;
+
+    const evidenceText=(window.prompt(
+      "Evidence refs, comma separated"+(status==="PASS"?" (required for PASS)":" (optional)"),
+      ""
+    )||"").trim();
+    const evidenceRefs=evidenceText
+      ?evidenceText.split(",").map((item)=>item.trim()).filter(Boolean)
+      :[];
+
+    const sourceRef=(window.prompt(
+      "Source/path/reference (optional)",
+      existing?.source_ref||""
+    )||"").trim();
+
+    const inventory=await loadArtifactState(selectedProject);
+    if(!inventory?.state_etag){
+      window.alert("Cannot update artifact: project state ETag unavailable.");
+      return;
+    }
+
+    const confirmed=window.confirm(
+      "Apply "+status+" to "+artifactId+
+      "? This changes tracked project-state and requires a Git commit."
+    );
+    if(!confirmed)return;
+
+    const result=await submitArtifactUpdate(
+      selectedProject,
+      {
+        stage_id:stage.id,
+        artifact_id:artifactId,
+        title,
+        status,
+        rationale,
+        evidence_refs:evidenceRefs,
+        source_ref:sourceRef||null,
+        decided_by:"HUMAN_LOCAL_OPERATOR",
+        expected_etag:inventory.state_etag
+      }
+    );
+
+    if(result.status!=="APPLIED"){
+      window.alert(
+        (result.status||"BLOCKED")+": "+
+        (result.errors||["UNKNOWN_ERROR"]).join(", ")
+      );
+      return;
+    }
+
+    const project=projectById(selectedProject);
+    await loadStageState(project);
+    await loadRuntimeHistory(project);
+    renderWorkspace();
+    renderProjects();
+  };
+
+  const add=document.querySelector("[data-artifact-add]");
+  if(add)add.onclick=()=>apply(null);
+
+  document.querySelectorAll("[data-artifact-edit]").forEach((button)=>{
+    button.onclick=()=>{
+      const existing=(stage.documents?.items||[]).find(
+        (item)=>item.id===button.dataset.artifactEdit
+      );
+      apply(existing||null);
+    };
+  });
+}
+
+function traceabilityHtml(projectId,stageId){
+  const graph=model.traceability[projectId];
+  if(!graph){
+    return '<div class="empty">Traceability graph unavailable.</div>';
+  }
+
+  const kinds={};
+  for(const node of graph.nodes||[]){
+    kinds[node.kind]=(kinds[node.kind]||0)+1;
+  }
+  const stagePrefix="stage:"+stageId;
+  const relatedEdges=(graph.edges||[]).filter((edge)=>
+    edge.source===stagePrefix||
+    edge.target===stagePrefix||
+    edge.source.includes(":"+stageId+":")||
+    edge.target.includes(":"+stageId+":")
+  );
+
+  return '<div class="details">'+
+      detail("Integrity",graph.integrity_status||"—")+
+      detail("Nodes",graph.node_count||0)+
+      detail("Edges",graph.edge_count||0)+
+    '</div>'+
+    (graph.unresolved_evidence_refs?.length
+      ?'<div class="traceWarning">UNRESOLVED EVIDENCE: '+
+        esc(graph.unresolved_evidence_refs.join(", "))+'</div>'
+      :'<div class="analysis">Traceability evidence references resolved.</div>')+
+    '<div class="traceKinds">'+Object.entries(kinds).map(([kind,count])=>
+      '<span><b>'+esc(kind)+'</b> '+count+'</span>'
+    ).join("")+'</div>'+
+    '<div class="traceEdges">'+
+      '<em>STAGE RELATIONS</em>'+
+      (relatedEdges.length
+        ?relatedEdges.slice(0,40).map((edge)=>
+          '<div class="traceEdge">'+
+            '<span>'+esc(edge.source)+'</span>'+
+            '<b>'+esc(edge.relation)+'</b>'+
+            '<span>'+esc(edge.target)+'</span>'+
+          '</div>'
+        ).join("")
+        :'<div class="empty">No direct stage relations yet.</div>')+
+    '</div>';
 }
 
 function analysisHtml(stage){
@@ -522,11 +715,19 @@ function analysisHtml(stage){
 
 function securityHtml(stage,state){
   const relevant=["PD-02","DS-02","ARCH","DEV","QA","OPS"].includes(stage.id);
+  const devsec=model.devsecopsStates[selectedProject];
   let html='<div class="details">'+
     detail("Security status",relevant?stage.status:"UPSTREAM / N/A")+
     detail("Hard blocker",stage.status==="BLOCKED"?"YES":"NO")+
     detail("Evidence rule","NO EVIDENCE → NO PASS")+
+    detail("Current HEAD CI",devsec?.ci_current_head||"UNKNOWN")+
+    detail("DevSecOps artifact",devsec?.evidence_artifact||"UNKNOWN")+
+    detail("Commit-bound state",devsec?.status||"UNKNOWN")+
   '</div>';
+  if(devsec?.blockers?.length){
+    html+='<div class="traceWarning">DEVSECOPS BLOCKERS: '+
+      esc(devsec.blockers.join(", "))+'</div>';
+  }
   if(!relevant){
     return html+'<div class="analysis">Исполняемые DevSecOps checks появляются по мере продвижения конвейера.</div>';
   }
@@ -947,6 +1148,8 @@ byId("refresh").onclick=async()=>{
   model.liveStates={};
   model.evidenceStates={};
   model.manufacturingEvents={};
+  model.traceability={};
+  model.devsecopsStates={};
   model.migrationPlans={};
   await load();
 };
