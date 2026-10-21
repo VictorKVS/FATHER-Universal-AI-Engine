@@ -21,7 +21,8 @@
       "write_capabilities": [
         "SCM.CREATE_BRANCH",
         "SCM.OPEN_CHANGE_REQUEST"
-      ]
+      ],
+      "draft_change_request_supported": true
     },
     {
       "id": "gitlab",
@@ -41,28 +42,32 @@
       "write_capabilities": [
         "SCM.CREATE_BRANCH",
         "SCM.OPEN_CHANGE_REQUEST"
-      ]
+      ],
+      "draft_change_request_supported": true
     },
     {
       "id": "gitverse",
       "name": "GitVerse / SberTech",
       "family": "GITVERSE",
       "status": "AVAILABLE",
-      "adapter_status": "PLANNED",
+      "adapter_status": "IMPLEMENTED_READ_ONLY",
       "capabilities": [
         "REPOSITORIES",
         "CODE_REVIEW",
         "TRACKER",
         "CI_CD",
         "ARTIFACTS"
-      ]
+      ],
+      "write_capabilities": [],
+      "draft_change_request_supported": null,
+      "write_discovery_status": "VERIFIED_ENDPOINTS_REQUIRE_REQUEST_SCHEMA_CONFIRMATION"
     },
     {
       "id": "sourcecraft",
       "name": "SourceCraft / Yandex",
       "family": "SOURCECRAFT",
       "status": "AVAILABLE",
-      "adapter_status": "PLANNED",
+      "adapter_status": "IMPLEMENTED_READ_WRITE_PARTIAL",
       "capabilities": [
         "REPOSITORIES",
         "PULL_REQUESTS",
@@ -70,20 +75,30 @@
         "CI_CD",
         "PACKAGES",
         "MIRRORING"
-      ]
+      ],
+      "write_capabilities": [
+        "SCM.OPEN_CHANGE_REQUEST"
+      ],
+      "draft_change_request_supported": true,
+      "branch_create_status": "UNSUPPORTED_BY_VERIFIED_PUBLIC_REST_API"
     },
     {
       "id": "gitflic",
       "name": "GitFlic",
       "family": "GITFLIC",
       "status": "AVAILABLE",
-      "adapter_status": "PLANNED",
+      "adapter_status": "IMPLEMENTED_READ_WRITE_LIMITED",
       "capabilities": [
         "REPOSITORIES",
         "CODE_REVIEW",
         "ISSUES",
         "CI_CD"
-      ]
+      ],
+      "write_capabilities": [
+        "SCM.CREATE_BRANCH",
+        "SCM.OPEN_CHANGE_REQUEST"
+      ],
+      "draft_change_request_supported": false
     },
     {
       "id": "azure_devops",

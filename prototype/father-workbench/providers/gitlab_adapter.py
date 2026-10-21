@@ -15,6 +15,7 @@ from providers.base import ProviderError, validate_branch_name
 
 class GitLabAdapter:
     provider_id = "gitlab"
+    write_actions = {"SCM.CREATE_BRANCH", "SCM.OPEN_CHANGE_REQUEST"}
 
     def __init__(
         self,

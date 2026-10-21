@@ -17,6 +17,7 @@ GITHUB_API = "https://api.github.com"
 
 class GitHubAdapter:
     provider_id = "github"
+    write_actions = {"SCM.CREATE_BRANCH", "SCM.OPEN_CHANGE_REQUEST"}
     def __init__(self, token: str | None = None, timeout: float = 8.0) -> None:
         self._token = token if token is not None else os.getenv("FATHER_GITHUB_TOKEN")
         self._timeout = timeout

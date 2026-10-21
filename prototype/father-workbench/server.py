@@ -19,8 +19,12 @@ from typing import Any
 from urllib.parse import unquote, urlparse
 
 from evidence_store import EvidenceStore
-from providers.github_adapter import GitHubAdapter, ProviderError
+from providers.base import ProviderError
+from providers.github_adapter import GitHubAdapter
 from providers.gitlab_adapter import GitLabAdapter
+from providers.gitverse_adapter import GitVerseAdapter
+from providers.sourcecraft_adapter import SourceCraftAdapter
+from providers.gitflic_adapter import GitFlicAdapter
 
 APP_DIR = Path(__file__).resolve().parent
 REPO_ROOT = APP_DIR.parents[1]
@@ -101,20 +105,30 @@ def stage_by_id(project: dict[str, Any], stage_id: str) -> dict[str, Any] | None
     return None
 
 
+def provider_adapter(provider: str):
+    if provider == "github":
+        return GitHubAdapter()
+    if provider == "gitlab":
+        return GitLabAdapter()
+    if provider == "gitverse":
+        return GitVerseAdapter()
+    if provider == "sourcecraft":
+        return SourceCraftAdapter()
+    if provider == "gitflic":
+        return GitFlicAdapter()
+    raise NotImplementedError(f"Provider adapter not implemented: {provider}")
+
+
 def live_provider_state(project: dict[str, Any]) -> dict[str, Any]:
     dev_platform = project.get("dev_platform") or {}
-    provider = dev_platform.get("primary_provider")
+    provider = str(dev_platform.get("primary_provider") or "")
     repository = dev_platform.get("repository") or project.get("repository")
     branch = dev_platform.get("branch") or project.get("branch")
     if not repository or not branch:
         raise ValueError("Project has no repository/branch binding")
 
-    if provider == "github":
-        return GitHubAdapter().live_state(str(repository), str(branch))
-    if provider == "gitlab":
-        return GitLabAdapter().live_state(str(repository), str(branch))
-
-    raise NotImplementedError(f"Provider adapter not implemented: {provider}")
+    adapter = provider_adapter(provider)
+    return adapter.live_state(str(repository), str(branch))
 
 
 def provider_state_subject_key(
@@ -213,17 +227,24 @@ def execute_action(
         }
 
     dev_platform = project.get("dev_platform") or {}
-    provider = dev_platform.get("primary_provider")
-    if provider == "github":
-        adapter = GitHubAdapter()
-    elif provider == "gitlab":
-        adapter = GitLabAdapter()
-    else:
+    provider = str(dev_platform.get("primary_provider") or "")
+    try:
+        adapter = provider_adapter(provider)
+    except NotImplementedError:
         return {
             **plan,
             "status": "BLOCKED",
             "allowed": False,
             "reasons": ["PROVIDER_WRITE_ADAPTER_NOT_IMPLEMENTED"],
+        }
+
+    write_actions = getattr(adapter, "write_actions", set())
+    if action not in write_actions:
+        return {
+            **plan,
+            "status": "BLOCKED",
+            "allowed": False,
+            "reasons": ["PROVIDER_ACTION_NOT_SUPPORTED"],
         }
     if not adapter.can_write:
         return {
@@ -468,6 +489,20 @@ def plan_action(project_id: str, action: str) -> dict[str, Any]:
     if action == "SCM.DELETE_BRANCH":
         reasons.append("EXPLICIT_DELETE_APPROVAL_REQUIRED")
 
+    dev_platform = project.get("dev_platform") or {}
+    provider = str(dev_platform.get("primary_provider") or "")
+    executable_actions = {"SCM.CREATE_BRANCH", "SCM.OPEN_CHANGE_REQUEST"}
+
+    if action in executable_actions:
+        try:
+            adapter = provider_adapter(provider)
+            if action not in getattr(adapter, "write_actions", set()):
+                reasons.append("PROVIDER_ACTION_NOT_SUPPORTED")
+        except NotImplementedError:
+            reasons.append("PROVIDER_ADAPTER_NOT_IMPLEMENTED")
+    elif action in SAFE_ACTIONS:
+        reasons.append("ACTION_EXECUTION_NOT_IMPLEMENTED")
+
     allowed = not reasons and action in SAFE_ACTIONS
     return {
         "action_id": action_id,
@@ -529,7 +564,13 @@ class FatherHandler(BaseHTTPRequestHandler):
                             ],
                         },
                         "stage_state_api": True,
-                        "live_provider_read": ["github", "gitlab"],
+                        "live_provider_read": [
+                            "github",
+                            "gitlab",
+                            "gitverse",
+                            "sourcecraft",
+                            "gitflic",
+                        ],
                         "evidence_store": True,
                         "manufacturing_events": True,
                     }
