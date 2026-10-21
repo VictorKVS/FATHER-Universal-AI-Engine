@@ -15,6 +15,7 @@ let model={
   traceability:{},
   devsecopsStates:{},
   healthStates:{},
+  projectMemory:{},
   evidencePacks:{},
   providerBindings:{},
   migrationSecurity:{},
@@ -121,6 +122,10 @@ async function loadRuntimeHistory(project){
     ["/api/projects/"+projectId+"/health"],
     null
   );
+  const projectMemory=await readFirst(
+    ["/api/projects/"+projectId+"/project-memory/preview"],
+    null
+  );
   const packs=await readFirst(
     ["/api/projects/"+projectId+"/evidence-packs"],
     {packs:[]}
@@ -142,6 +147,7 @@ async function loadRuntimeHistory(project){
   model.traceability[project.project_id]=traceability;
   model.devsecopsStates[project.project_id]=devsecops?.devsecops||null;
   model.healthStates[project.project_id]=health?.health||null;
+  model.projectMemory[project.project_id]=projectMemory;
   model.evidencePacks[project.project_id]=packs.packs||[];
   model.providerBindings[project.project_id]=bindings;
   model.migrationSecurity[project.project_id]=migrationSecurity;
@@ -284,6 +290,7 @@ function renderWorkspace(){
 
   renderKpis(project,state,branch);
   renderHealth(project);
+  renderProjectMemory(project);
   renderConveyor(state);
   renderInspector(state);
   renderScorecards(state);
@@ -1235,6 +1242,92 @@ function historyHtml(stage,projectId){
     '<div style="height:13px"></div><em>LESSONS LEARNED</em>'+learned;
 }
 
+function renderProjectMemory(project){
+  const envelope=model.projectMemory[project.project_id];
+  const statusNode=byId("projectMemoryStatus");
+  const panel=byId("projectMemoryPanel");
+
+  if(!envelope){
+    statusNode.textContent="UNKNOWN";
+    statusNode.className="chip idle";
+    panel.innerHTML='<div class="empty">Project Memory preview unavailable.</div>';
+    return;
+  }
+
+  const memory=envelope.stored||envelope.preview||{};
+  const preview=envelope.preview||{};
+  const status=memory.status||preview.status||"NOT_READY";
+  statusNode.textContent=status;
+  statusNode.className="chip "+stateClass(
+    status==="APPROVED"?"PASS":
+    status==="DRAFT"?"IN_PROGRESS":
+    status
+  );
+
+  const sections=memory.sections||preview.sections||{};
+  const blockers=preview.readiness?.blockers||[];
+  const why=(sections.why_this_solution||[]);
+  const evidence=(sections.key_evidence||[]);
+
+  panel.innerHTML=
+    '<div class="memorySummary">'+
+      '<strong>'+esc(sections.what_was_built||"TBD")+'</strong>'+
+      '<small>Evidence refs: '+esc(String(evidence.length))+'</small>'+
+    '</div>'+
+    (why.length
+      ?'<div class="memoryWhy"><em>WHY THIS WAY</em>'+
+        why.slice(0,4).map((item)=>'<div>'+esc(item)+'</div>').join("")+
+        '</div>'
+      :'')+
+    (blockers.length
+      ?'<div class="memoryBlockers"><em>NOT READY</em>'+
+        blockers.map((item)=>'<div>'+esc(item)+'</div>').join("")+
+        '</div>'
+      :'')+
+    (preview.status==="DRAFT"
+      ?'<button id="generateMemoryBtn" class="memoryAction">'+
+        (envelope.stored?"Regenerate Draft":"Generate Draft")+
+        '</button>'
+      :'')+
+    (envelope.stored
+      ?'<div class="memoryStored">Tracked draft · ETag '+
+        esc(String(envelope.stored_etag||"").slice(0,12))+
+        ' · Git commit required for changes</div>'
+      :'');
+
+  const button=byId("generateMemoryBtn");
+  if(button){
+    button.onclick=async()=>{
+      const confirmed=window.confirm(
+        "Generate tracked Project Memory DRAFT from current approved decisions, lessons and evidence?"
+      );
+      if(!confirmed)return;
+
+      const output=byId("actionResult");
+      output.textContent="Generating source-grounded Project Memory draft…";
+      output.className="actionResult";
+      const generated=await generateProjectMemoryDraft(
+        project.project_id,
+        envelope.stored_etag||null
+      );
+      if(generated.status!=="APPLIED"){
+        output.textContent=
+          (generated.status||"BLOCKED")+" · "+
+          (generated.errors||["UNKNOWN_ERROR"]).join(", ");
+        output.className="actionResult block";
+        return;
+      }
+      await loadRuntimeHistory(project);
+      output.textContent=
+        "PROJECT MEMORY DRAFT · "+generated.memory_etag.slice(0,12)+
+        " · evidence "+(generated.evidence?.evidence_id||"captured")+
+        " · Git commit required";
+      output.className="actionResult ok";
+      renderProjectMemory(project);
+    };
+  }
+}
+
 function renderHealth(project){
   const health=model.healthStates[project.project_id];
   const overall=byId("healthOverall");
@@ -1459,6 +1552,33 @@ function renderScmActions(project,state,branch){
       }
     };
   });
+}
+
+async function generateProjectMemoryDraft(
+  projectId,
+  expectedMemoryEtag
+){
+  try{
+    const response=await fetch("/api/project-memory/generate",{
+      method:"POST",
+      headers:{
+        "Content-Type":"application/json",
+        "X-FATHER-Action":"confirm"
+      },
+      body:JSON.stringify({
+        project_id:projectId,
+        expected_memory_etag:expectedMemoryEtag,
+        confirm:true
+      })
+    });
+    const body=await response.json().catch(()=>({}));
+    return{http_status:response.status,...body};
+  }catch(_error){
+    return{
+      status:"BLOCKED",
+      errors:["CONTROL_PLANE_API_UNAVAILABLE"]
+    };
+  }
 }
 
 async function testProviderConnection(projectId,targetProvider){
@@ -2370,6 +2490,7 @@ byId("refresh").onclick=async()=>{
   model.traceability={};
   model.devsecopsStates={};
   model.healthStates={};
+  model.projectMemory={};
   model.evidencePacks={};
   model.providerBindings={};
   model.migrationSecurity={};
