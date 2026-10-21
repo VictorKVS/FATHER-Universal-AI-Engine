@@ -54,9 +54,13 @@ jobs:
           python -m json.tool models/zoo.json > /dev/null
           python -m json.tool models/openai_compatible/model.runtime.json > /dev/null
           python -m json.tool models/deterministic_test/model.runtime.json > /dev/null
+          python -m json.tool models/failing_test/model.runtime.json > /dev/null
+          python -m json.tool models/openai_compatible_a/model.runtime.json > /dev/null
+          python -m json.tool models/openai_compatible_b/model.runtime.json > /dev/null
           python -m json.tool tools/zoo.json > /dev/null
           python -m json.tool cells/zoo.json > /dev/null
           python -m json.tool cells/CELL-001.json > /dev/null
+          python -m json.tool cells/CELL-002.json > /dev/null
 
       - name: Unit tests
         run: python -m unittest discover -s father_core/tests -v
@@ -74,6 +78,14 @@ jobs:
         run: |
           python scripts/run_father_cell.py             --cell CELL-001             --test             --input "FATHER core smoke"             --output artifacts/core/CELL-001-run.json
 
+      - name: CELL-002 fallback smoke run
+        run: |
+          python scripts/run_father_cell.py \
+            --cell CELL-002 \
+            --test \
+            --input "FATHER two-model fallback smoke" \
+            --output artifacts/core/CELL-002-run.json
+
       - name: Validate smoke evidence
         run: |
           python - <<'PY'
@@ -89,6 +101,19 @@ jobs:
           assert data["evidence"]["input_sha256"], data
           assert data["evidence"]["output_sha256"], data
           assert data["evidence"]["adapter_type"] == "deterministic_test", data
+
+          routed = json.loads(
+              Path("artifacts/core/CELL-002-run.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          assert routed["status"] == "SUCCEEDED", routed
+          assert routed["routing_mode"] == "PRIMARY_FALLBACK", routed
+          assert len(routed["attempts"]) == 2, routed
+          assert routed["attempts"][0]["status"] == "FAILED", routed
+          assert routed["attempts"][1]["status"] == "SUCCEEDED", routed
+          assert routed["routing_evidence"]["fallback_used"] is True, routed
+          assert routed["routing_evidence"]["semantic_input_hash_consistent"] is True, routed
           PY
 
       - name: Upload Core evidence
