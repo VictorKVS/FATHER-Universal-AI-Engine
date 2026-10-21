@@ -329,6 +329,8 @@ function renderInspector(state){
   const host=byId("stageContent");
   if(activeTab==="documents")host.innerHTML=documentsHtml(stage);
   else if(activeTab==="analysis")host.innerHTML=analysisHtml(stage);
+  else if(activeTab==="decisions")host.innerHTML=decisionsHtml(stage);
+  else if(activeTab==="risks")host.innerHTML=risksHtml(stage);
   else if(activeTab==="security")host.innerHTML=securityHtml(stage,state);
   else if(activeTab==="traceability")host.innerHTML=traceabilityHtml(selectedProject,stage.id);
   else if(activeTab==="history")host.innerHTML=historyHtml(stage,selectedProject);
@@ -336,6 +338,7 @@ function renderInspector(state){
 
   wireGateControls(state,stage);
   wireArtifactControls(state,stage);
+  wireProductionRecordControls(state,stage);
 }
 
 function overviewHtml(stage){
@@ -941,15 +944,194 @@ function traceabilityHtml(projectId,stageId){
 }
 
 function analysisHtml(stage){
-  const decisions=stage.decisions||[];
-  return '<div class="analysis">'+esc(stage.analysis||"No specialist analysis yet.")+'</div>'+
-    '<div style="height:12px"></div><em>KEY DECISIONS</em>'+
-    (decisions.length
-      ?'<div class="rows">'+decisions.map((item,index)=>
-        '<div class="row"><span class="code">DEC-'+String(index+1).padStart(2,"0")+
-        '</span><span>'+esc(item)+'</span><span class="pill PASS">RECORDED</span></div>'
+  const records=stage.specialist_analyses||[];
+  return '<div class="analysis">'+esc(stage.analysis||"No baseline specialist analysis.")+'</div>'+
+    '<div class="recordToolbar"><button class="gateBtn" data-record-add="ANALYSIS">+ Specialist analysis</button></div>'+
+    (records.length
+      ?'<div class="rows">'+records.map((item)=>
+        '<div class="row recordRow">'+
+          '<span class="code">'+esc(item.analysis_id)+'</span>'+
+          '<span><b>'+esc(item.title)+'</b><small>'+esc(item.role||"")+' · '+esc(item.summary||"")+'</small></span>'+
+          '<span class="pill '+esc(item.status)+'">'+esc(item.status)+'</span>'+
+        '</div>'
       ).join("")+'</div>'
-      :'<div class="empty">No material decisions yet.</div>');
+      :'<div class="empty">No structured specialist analyses yet.</div>');
+}
+
+function decisionsHtml(stage){
+  const records=stage.decision_records||[];
+  const legacy=stage.decisions||[];
+  return '<div class="recordToolbar"><button class="gateBtn" data-record-add="DECISION">+ Decision record</button></div>'+
+    (records.length
+      ?'<div class="rows">'+records.map((item)=>
+        '<div class="row recordRow">'+
+          '<span class="code">'+esc(item.decision_id)+'</span>'+
+          '<span><b>'+esc(item.title)+'</b><small>'+esc(item.decision||"")+' · '+esc(item.rationale||"")+'</small></span>'+
+          '<span class="pill '+esc(item.status)+'">'+esc(item.status)+'</span>'+
+        '</div>'
+      ).join("")+'</div>'
+      :'<div class="empty">No structured decision records yet.</div>')+
+    (legacy.length
+      ?'<div class="legacyRecords"><em>LEGACY DECISIONS</em>'+legacy.map((item)=>
+        '<div>'+esc(item)+'</div>'
+      ).join("")+'</div>'
+      :'');
+}
+
+function risksHtml(stage){
+  const records=stage.risk_records||[];
+  return '<div class="recordToolbar"><button class="gateBtn" data-record-add="RISK">+ Risk record</button></div>'+
+    (records.length
+      ?'<div class="rows">'+records.map((item)=>
+        '<div class="row recordRow">'+
+          '<span class="code">'+esc(item.risk_id)+'</span>'+
+          '<span><b>'+esc(item.title)+'</b><small>'+esc(item.description||"")+' · '+esc(item.likelihood||"")+'/'+esc(item.impact||"")+'</small></span>'+
+          '<span class="pill '+esc(item.status)+'">'+esc(item.status)+'</span>'+
+        '</div>'
+      ).join("")+'</div>'
+      :'<div class="empty">No structured risks for this stage yet.</div>');
+}
+
+function commaList(value){
+  return (value||"")
+    .split(",")
+    .map((item)=>item.trim())
+    .filter(Boolean);
+}
+
+async function submitProductionRecord(projectId,payload){
+  try{
+    const response=await fetch("/api/records/upsert",{
+      method:"POST",
+      headers:{
+        "Content-Type":"application/json",
+        "X-FATHER-Action":"confirm"
+      },
+      body:JSON.stringify({
+        project_id:projectId,
+        confirm:true,
+        ...payload
+      })
+    });
+    const body=await response.json().catch(()=>({}));
+    return{http_status:response.status,...body};
+  }catch(_error){
+    return{
+      status:"BLOCKED",
+      errors:["CONTROL_PLANE_API_UNAVAILABLE"]
+    };
+  }
+}
+
+async function addSpecialistAnalysis(stage,etag){
+  const id=(window.prompt("Analysis ID","AN-"+stage.id+"-"+Date.now().toString().slice(-6))||"").trim();
+  if(!id)return;
+  const role=(window.prompt("Specialist role",stage.owner||"SPECIALIST")||"").trim();
+  const title=(window.prompt("Analysis title","Stage analysis")||"").trim();
+  const summary=(window.prompt("Analysis summary","")||"").trim();
+  const status=(window.prompt("Status: DRAFT / IN_REVIEW / VERIFIED / REJECTED","DRAFT")||"").trim().toUpperCase();
+  const findings=commaList(window.prompt("Findings, comma separated","")||"");
+  const recommendations=commaList(window.prompt("Recommendations, comma separated","")||"");
+  const evidenceRefs=commaList(window.prompt("Evidence refs, comma separated"+(status==="VERIFIED"?" (required)":" (optional)"),"")||"");
+  if(!window.confirm("Save specialist analysis "+id+"? Git commit will be required."))return;
+  return submitProductionRecord(selectedProject,{
+    stage_id:stage.id,
+    record_type:"ANALYSIS",
+    expected_etag:etag,
+    record:{
+      analysis_id:id,role,title,summary,status,
+      findings,recommendations,evidence_refs:evidenceRefs,
+      author:"HUMAN_LOCAL_OPERATOR"
+    }
+  });
+}
+
+async function addDecisionRecord(stage,etag){
+  const id=(window.prompt("Decision ID","DEC-"+stage.id+"-"+Date.now().toString().slice(-6))||"").trim();
+  if(!id)return;
+  const title=(window.prompt("Decision title","")||"").trim();
+  const context=(window.prompt("Context / problem","")||"").trim();
+  const decision=(window.prompt("What was decided?","")||"").trim();
+  const rationale=(window.prompt("Why this decision?","")||"").trim();
+  const alternatives=commaList(window.prompt("Alternatives considered, comma separated","")||"");
+  const rejectedReasons=commaList(window.prompt("Why alternatives were rejected, comma separated","")||"");
+  const constraints=commaList(window.prompt("Important constraints, comma separated","")||"");
+  const status=(window.prompt("Status: PROPOSED / APPROVED / REJECTED / SUPERSEDED","PROPOSED")||"").trim().toUpperCase();
+  const evidenceRefs=commaList(window.prompt("Evidence refs"+(status==="APPROVED"?" (required)":"")+", comma separated","")||"");
+  const revisit=commaList(window.prompt("Revisit triggers, comma separated","")||"");
+  if(!window.confirm("Save decision "+id+"? Git commit will be required."))return;
+  return submitProductionRecord(selectedProject,{
+    stage_id:stage.id,
+    record_type:"DECISION",
+    expected_etag:etag,
+    record:{
+      decision_id:id,title,context,decision,rationale,
+      alternatives,rejected_reasons:rejectedReasons,
+      constraints,evidence_refs:evidenceRefs,
+      owner:stage.owner||"HUMAN_LOCAL_OPERATOR",
+      status,revisit_triggers:revisit
+    }
+  });
+}
+
+async function addRiskRecord(stage,etag){
+  const id=(window.prompt("Risk ID","RISK-"+stage.id+"-"+Date.now().toString().slice(-6))||"").trim();
+  if(!id)return;
+  const title=(window.prompt("Risk title","")||"").trim();
+  const description=(window.prompt("Risk description","")||"").trim();
+  const likelihood=(window.prompt("Likelihood: LOW / MEDIUM / HIGH / CRITICAL","MEDIUM")||"").trim().toUpperCase();
+  const impact=(window.prompt("Impact: LOW / MEDIUM / HIGH / CRITICAL","HIGH")||"").trim().toUpperCase();
+  const treatment=(window.prompt("Treatment / mitigation","")||"").trim();
+  const status=(window.prompt("Status: OPEN / MITIGATING / ACCEPTED / CLOSED","OPEN")||"").trim().toUpperCase();
+  const evidenceRefs=commaList(window.prompt("Evidence refs"+(["ACCEPTED","CLOSED"].includes(status)?" (required)":"")+", comma separated","")||"");
+  if(!window.confirm("Save risk "+id+"? Git commit will be required."))return;
+  return submitProductionRecord(selectedProject,{
+    stage_id:stage.id,
+    record_type:"RISK",
+    expected_etag:etag,
+    record:{
+      risk_id:id,title,description,likelihood,impact,treatment,
+      owner:stage.owner||"HUMAN_LOCAL_OPERATOR",
+      status,evidence_refs:evidenceRefs
+    }
+  });
+}
+
+function wireProductionRecordControls(state,stage){
+  if(!["analysis","decisions","risks"].includes(activeTab))return;
+  const button=document.querySelector("[data-record-add]");
+  if(!button)return;
+  button.onclick=async()=>{
+    const inventory=await loadArtifactState(selectedProject);
+    if(!inventory?.state_etag){
+      window.alert("Project state ETag unavailable.");
+      return;
+    }
+    let result=null;
+    if(button.dataset.recordAdd==="ANALYSIS"){
+      result=await addSpecialistAnalysis(stage,inventory.state_etag);
+    }else if(button.dataset.recordAdd==="DECISION"){
+      result=await addDecisionRecord(stage,inventory.state_etag);
+    }else if(button.dataset.recordAdd==="RISK"){
+      result=await addRiskRecord(stage,inventory.state_etag);
+    }
+    if(!result)return;
+    if(result.status!=="APPLIED"){
+      window.alert(
+        (result.status||"BLOCKED")+": "+
+        (result.errors||["UNKNOWN_ERROR"]).join(", ")
+      );
+      return;
+    }
+    const project=projectById(selectedProject);
+    await loadStageState(project);
+    await loadRuntimeHistory(project);
+    renderWorkspace();
+    renderProjects();
+    if(result.quality_warnings?.length){
+      window.alert("Saved with warnings: "+result.quality_warnings.join(", "));
+    }
+  };
 }
 
 function securityHtml(stage,state){

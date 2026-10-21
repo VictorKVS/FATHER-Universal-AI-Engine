@@ -63,3 +63,10 @@ main{padding:27px 32px 60px;overflow:hidden}.top,.hero,.sectionTitle,.panelHead{
 .documentTextarea:focus{outline:1px solid #56d9ff66}
 .documentSaveState{color:var(--muted);font-size:8px}
 .okText{color:#9ce8b4}.failText{color:#ff9eaa}
+
+.recordToolbar{display:flex;justify-content:flex-end;margin-bottom:10px}
+.recordRow span:nth-child(2){min-width:0}
+.recordRow b{display:block;font-size:9px}
+.recordRow small{display:block;color:var(--muted);font-size:7px;margin-top:3px;white-space:normal}
+.legacyRecords{margin-top:14px;border-top:1px solid #22384766;padding-top:10px;color:var(--muted);font-size:8px}
+.legacyRecords>div{padding:4px 0}
