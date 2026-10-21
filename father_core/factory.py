@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from father_core.cell import FactoryCell
+from father_core.compare import CompareFactoryCell
 from father_core.routed import RoutedFactoryCell
 from father_core.zoo import Zoo
 
@@ -25,6 +26,12 @@ def build_cell(
         )
     if mode == "PRIMARY_FALLBACK":
         return RoutedFactoryCell(
+            repo_root=repo_root,
+            cell_id=cell_id,
+            test_mode=test_mode,
+        )
+    if mode == "FAN_OUT_COMPARE":
+        return CompareFactoryCell(
             repo_root=repo_root,
             cell_id=cell_id,
             test_mode=test_mode,
