@@ -1,0 +1,101 @@
+name: FATHER Core CI
+
+on:
+  push:
+    paths:
+      - "father_core/**"
+      - "agents/zoo.json"
+      - "agents/father_minimal/**"
+      - "models/**"
+      - "tools/**"
+      - "cells/**"
+      - "scripts/run_father_cell.py"
+      - "docs/16_FATHER_CORE_FACTORY_STAGES.md"
+      - ".github/workflows/father-core-ci.yml"
+  pull_request:
+    paths:
+      - "father_core/**"
+      - "agents/zoo.json"
+      - "agents/father_minimal/**"
+      - "models/**"
+      - "tools/**"
+      - "cells/**"
+      - "scripts/run_father_cell.py"
+      - "docs/16_FATHER_CORE_FACTORY_STAGES.md"
+      - ".github/workflows/father-core-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  core:
+    name: Validate universal factory cell
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+
+      - name: Python syntax
+        run: |
+          python -m compileall -q father_core
+          python -m py_compile scripts/run_father_cell.py
+
+      - name: Validate Zoo contracts
+        run: |
+          python -m json.tool agents/zoo.json > /dev/null
+          python -m json.tool agents/father_minimal/agent.runtime.json > /dev/null
+          python -m json.tool models/zoo.json > /dev/null
+          python -m json.tool models/openai_compatible/model.runtime.json > /dev/null
+          python -m json.tool models/deterministic_test/model.runtime.json > /dev/null
+          python -m json.tool tools/zoo.json > /dev/null
+          python -m json.tool cells/zoo.json > /dev/null
+          python -m json.tool cells/CELL-001.json > /dev/null
+
+      - name: Unit tests
+        run: python -m unittest discover -s father_core/tests -v
+
+      - name: Baseline secret hygiene
+        run: python scripts/check_secret_hygiene.py
+
+      - name: Dedicated Python SAST
+        run: |
+          python -m pip install --disable-pip-version-check "bandit==1.9.4"
+          mkdir -p artifacts/core
+          bandit -r father_core scripts/run_father_cell.py             -x father_core/tests             --severity-level high             --confidence-level high             -f json             -o artifacts/core/bandit.json
+
+      - name: CELL-001 deterministic smoke run
+        run: |
+          python scripts/run_father_cell.py             --cell CELL-001             --test             --input "FATHER core smoke"             --output artifacts/core/CELL-001-run.json
+
+      - name: Validate smoke evidence
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          path = Path("artifacts/core/CELL-001-run.json")
+          data = json.loads(path.read_text(encoding="utf-8"))
+          assert data["status"] == "SUCCEEDED", data
+          assert data["evidence"]["cell_id"] == "CELL-001", data
+          assert data["evidence"]["agent_id"] == "FATHER-MINIMAL-AGENT-001", data
+          assert data["evidence"]["model_id"] == "FATHER-MODEL-DETERMINISTIC-TEST-001", data
+          assert data["evidence"]["input_sha256"], data
+          assert data["evidence"]["output_sha256"], data
+          assert data["evidence"]["adapter_type"] == "deterministic_test", data
+          PY
+
+      - name: Upload Core evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: father-core-${{ github.sha }}
+          path: artifacts/core/
+          if-no-files-found: error
+          retention-days: 30
