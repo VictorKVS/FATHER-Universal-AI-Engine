@@ -121,5 +121,49 @@ class GateFlowIntegrationTests(unittest.TestCase):
             self.assertIn("STATE_ETAG_CONFLICT", stale["errors"])
 
 
+    def test_ready_stage_requires_explicit_start(self) -> None:
+        state, etag = self.store.read(self.project)
+        state["stages"][0]["status"] = "READY"
+        ready_etag = self.store.write(self.project, state, etag)
+
+        with (
+            patch.object(server, "project_by_id", return_value=self.project),
+            patch.object(server, "PROJECT_STATE_STORE", self.store),
+            patch.object(server, "EVIDENCE_STORE", self.evidence),
+        ):
+            started = server.start_stage(
+                "P-1",
+                "PD-01",
+                "Specialist accepted the stage.",
+                "TEST-HUMAN",
+                ready_etag,
+            )
+
+        self.assertEqual(started["status"], "STARTED")
+        written, _ = self.store.read(self.project)
+        stage = written["stages"][0]
+        self.assertEqual(stage["status"], "IN_PROGRESS")
+        self.assertEqual(stage["run_history"][0]["event"], "STARTED")
+        events = self.evidence.list_manufacturing_events("P-1")
+        self.assertEqual(events[0]["event_type"], "STAGE_STARTED")
+
+    def test_non_ready_stage_cannot_start(self) -> None:
+        _state, etag = self.store.read(self.project)
+        with (
+            patch.object(server, "project_by_id", return_value=self.project),
+            patch.object(server, "PROJECT_STATE_STORE", self.store),
+            patch.object(server, "EVIDENCE_STORE", self.evidence),
+        ):
+            result = server.start_stage(
+                "P-1",
+                "PD-01",
+                "Attempt early start.",
+                "TEST-HUMAN",
+                etag,
+            )
+        self.assertEqual(result["status"], "BLOCKED")
+        self.assertIn("STAGE_NOT_READY", result["errors"])
+
+
 if __name__ == "__main__":
     unittest.main()
