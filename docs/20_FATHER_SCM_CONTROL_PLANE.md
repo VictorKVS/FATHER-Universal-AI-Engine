@@ -12,6 +12,9 @@ FATHER integrates with source-control / DevOps platforms through provider adapte
 ```text
 GitHub
 GitLab
+GitVerse / SberTech
+SourceCraft / Yandex
+GitFlic
 Azure DevOps
 Bitbucket
 Forgejo / Gitea
@@ -22,6 +25,10 @@ Project / Stage / Security / DevSecOps / Evidence / Gate
 ```
 
 FATHER must not hard-code its production model to one provider.
+
+The provider is a replaceable infrastructure choice.
+
+A project may move from one provider to another without changing its FATHER project identity, stage history, gates, Manufacturing KB history or Project Memory.
 
 ---
 
@@ -39,6 +46,22 @@ FATHER must not hard-code its production model to one provider.
 - labels;
 - artifacts;
 - deployment/status metadata.
+
+## Provider lifecycle
+FATHER must support:
+
+- connect provider;
+- disconnect provider;
+- set primary provider;
+- add secondary/mirror provider;
+- mirror repository;
+- migrate repository;
+- migrate or remap issues/work items where supported;
+- migrate or remap pull/merge requests where supported;
+- migrate or regenerate CI/CD definitions where feasible;
+- verify migration completeness;
+- switch primary provider;
+- preserve old provider as read-only historical source.
 
 ## Write
 Depending on permissions and policy:
@@ -154,11 +177,14 @@ Provider adapters translate them:
 ```text
 FATHER command
       ↓
-GitHub adapter      → Pull Request / Actions / Issues
-GitLab adapter      → Merge Request / Pipelines / Issues
-Azure DevOps adapter→ Pull Request / Pipelines / Work Items
-Bitbucket adapter   → Pull Request / Pipelines / Issues
-Forgejo adapter     → Pull Request / Actions / Issues
+GitHub adapter       → Pull Request / Actions / Issues
+GitLab adapter       → Merge Request / Pipelines / Issues
+GitVerse adapter     → repository / review / tracker / CI/CD
+SourceCraft adapter  → Pull Request / Issues / CI/CD / packages
+GitFlic adapter      → merge/code review / issues / pipelines
+Azure DevOps adapter → Pull Request / Pipelines / Work Items
+Bitbucket adapter    → Pull Request / Pipelines / Issues
+Forgejo adapter      → Pull Request / Actions / Issues
 ```
 
 Project logic remains provider-independent.
@@ -291,17 +317,52 @@ Allowed only when:
 
 ---
 
-# 11. Similar systems
+# 11. Supported Dev Platform families
 
 FATHER should support the concept, not only GitHub:
 
-- GitHub;
-- GitLab;
-- Azure DevOps;
-- Bitbucket;
+- GitHub / GitHub Enterprise;
+- GitLab.com / GitLab Self-Managed;
+- GitVerse / SberTech;
+- SourceCraft / Yandex;
+- GitFlic;
+- Azure DevOps Services / Server;
+- Bitbucket Cloud / Data Center;
 - Forgejo;
 - Gitea;
-- future internal SCM/DevOps providers.
+- future corporate/internal SCM and DevOps platforms.
+
+Provider-specific extras may appear as extensions, but canonical project/gate logic stays inside FATHER.
+
+## 11.1 Provider switching
+
+Canonical flow:
+
+```text
+CURRENT PROVIDER
+      ↓
+INVENTORY
+      ↓
+MIRROR / EXPORT
+      ↓
+TARGET PROVIDER IMPORT
+      ↓
+REPOSITORY HASH / REF CHECK
+      ↓
+BRANCH / TAG CHECK
+      ↓
+ISSUE / PR / PIPELINE MAPPING
+      ↓
+SECURITY + ACCESS CHECK
+      ↓
+MIGRATION EVIDENCE
+      ↓
+SWITCH PRIMARY PROVIDER
+      ↓
+OLD PROVIDER = HISTORICAL / MIRROR / DECOMMISSION
+```
+
+The FATHER Project ID does not change during provider migration.
 
 Provider-specific extras may appear as extensions, but canonical project/gate logic stays inside FATHER.
 
