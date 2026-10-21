@@ -393,10 +393,10 @@ async function handleStageStart(state,stage){
   )||"").trim();
   if(!rationale)return;
 
-  const evaluation=await recalculateGate(selectedProject,stage.id);
-  const expectedEtag=evaluation.state_etag;
+  const inventory=await loadArtifactState(selectedProject);
+  const expectedEtag=inventory?.state_etag;
   if(!expectedEtag){
-    window.alert("Cannot start stage: state ETag unavailable.");
+    window.alert("Cannot start stage: project state ETag unavailable.");
     return;
   }
 
