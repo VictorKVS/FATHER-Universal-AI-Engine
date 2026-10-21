@@ -108,14 +108,21 @@
       "name": "Azure DevOps",
       "family": "AZURE_DEVOPS",
       "status": "AVAILABLE",
-      "adapter_status": "PLANNED",
+      "adapter_status": "IMPLEMENTED_READ_WRITE_LIMITED",
       "capabilities": [
         "REPOS",
         "PULL_REQUESTS",
         "WORK_ITEMS",
         "PIPELINES",
         "ARTIFACTS"
-      ]
+      ],
+      "write_capabilities": [
+        "SCM.CREATE_BRANCH",
+        "SCM.OPEN_CHANGE_REQUEST"
+      ],
+      "draft_change_request_supported": true,
+      "branch_create_status": "VERIFIED_PUBLIC_API",
+      "repository_binding_format": "organization/project/repository"
     },
     {
       "id": "bitbucket",

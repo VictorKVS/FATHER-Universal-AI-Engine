@@ -146,3 +146,31 @@ Current audited/reconciled actions:
 - `SCM.OPEN_CHANGE_REQUEST`
 
 Bitbucket draft pull requests are preserved by the canonical FATHER change-request action.
+
+
+## Azure DevOps Repos connection
+
+Project repository bindings use:
+
+```text
+organization/project/repository
+```
+
+Server-side PAT:
+
+```powershell
+$env:FATHER_AZURE_DEVOPS_TOKEN = "<minimum vso.code/vso.code_write PAT>"
+```
+
+Optional base URL override:
+
+```powershell
+$env:FATHER_AZURE_DEVOPS_URL = "https://dev.azure.com"
+```
+
+Current audited/reconciled actions:
+
+- `SCM.CREATE_BRANCH`
+- `SCM.OPEN_CHANGE_REQUEST`
+
+Azure Pipelines is intentionally treated as a separate capability from Azure Repos and is not inferred as green from repository state.

@@ -48,6 +48,7 @@ from providers.gitflic_adapter import GitFlicAdapter
 from providers.gitea_adapter import GiteaAdapter
 from providers.forgejo_adapter import ForgejoAdapter
 from providers.bitbucket_adapter import BitbucketAdapter
+from providers.azure_devops_adapter import AzureDevOpsAdapter
 from production_records import (
     upsert_decision_record,
     upsert_risk_record,
@@ -208,6 +209,8 @@ def provider_adapter(provider: str):
         return ForgejoAdapter()
     if provider == "bitbucket":
         return BitbucketAdapter()
+    if provider == "azure_devops":
+        return AzureDevOpsAdapter()
     raise NotImplementedError(f"Provider adapter not implemented: {provider}")
 
 
