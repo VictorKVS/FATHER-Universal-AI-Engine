@@ -93,8 +93,17 @@ class GateEngineTests(unittest.TestCase):
         self.assertEqual(stage["gate_decisions"][0]["evidence_refs"], ["EVD-1"])
 
     def test_no_policy_cannot_pass(self) -> None:
+        state = copy.deepcopy(self.state)
+        state["stages"].append(
+            {
+                "id": "PD-99",
+                "status": "IN_PROGRESS",
+                "gate": "NOT_READY",
+                "documents": {"items": []},
+            }
+        )
         result = validate_gate_decision(
-            self.state,
+            state,
             "PD-99",
             "PASS",
             "test",

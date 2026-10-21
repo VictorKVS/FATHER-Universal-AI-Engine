@@ -29,6 +29,8 @@ PYTHON_FILES = (
     APP_ROOT / "server.py",
     APP_ROOT / "evidence_store.py",
     APP_ROOT / "migration_engine.py",
+    APP_ROOT / "gate_engine.py",
+    APP_ROOT / "state_store.py",
     APP_ROOT / "providers" / "base.py",
     APP_ROOT / "providers" / "github_adapter.py",
     APP_ROOT / "providers" / "gitlab_adapter.py",

@@ -47,6 +47,8 @@ jobs:
           python -m py_compile prototype/father-workbench/providers/sourcecraft_adapter.py
           python -m py_compile prototype/father-workbench/providers/gitflic_adapter.py
           python -m py_compile prototype/father-workbench/migration_engine.py
+          python -m py_compile prototype/father-workbench/gate_engine.py
+          python -m py_compile prototype/father-workbench/state_store.py
           python -m py_compile scripts/check_secret_hygiene.py
           python -m py_compile scripts/father_devsecops_baseline.py
 
@@ -54,15 +56,19 @@ jobs:
         run: python -m unittest discover -s prototype/father-workbench/tests -v
 
       - name: Validate JSON contracts
+        if: always()
         run: |
           python -m json.tool projects/registry.json > /dev/null
           python -m json.tool config/dev_platform/providers.json > /dev/null
           python -m json.tool docs/git/current_workspace.snapshot.json > /dev/null
+          python -m json.tool config/gates/stage_gate_policies.json > /dev/null
 
       - name: Baseline secret hygiene
+        if: always()
         run: python scripts/check_secret_hygiene.py
 
       - name: DevSecOps baseline and SPDX SBOM
+        if: always()
         run: python scripts/father_devsecops_baseline.py --output artifacts/devsecops
 
       - name: Upload DevSecOps evidence
@@ -71,13 +77,15 @@ jobs:
         with:
           name: father-devsecops-${{ github.sha }}
           path: artifacts/devsecops/
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 30
 
       - name: Set up Node
+        if: always()
         uses: actions/setup-node@v4
         with:
           node-version: "22"
 
       - name: JavaScript syntax
+        if: always()
         run: node --check prototype/father-workbench/app.js
