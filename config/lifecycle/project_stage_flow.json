@@ -1,0 +1,90 @@
+{
+  "schema_version": "father.project_stage_flow.v0.1",
+  "rules": {
+    "current_stage_is_first_eligible_non_passed": true,
+    "eligibility_requires_all_dependency_gates_pass": true,
+    "newly_unblocked_stage_status": "READY",
+    "ready_does_not_mean_work_started": true
+  },
+  "stages": [
+    {
+      "id": "PD-00",
+      "requires": []
+    },
+    {
+      "id": "PD-01",
+      "requires": [
+        "PD-00"
+      ]
+    },
+    {
+      "id": "PD-02",
+      "requires": [
+        "PD-01"
+      ],
+      "group": "SECURITY"
+    },
+    {
+      "id": "DS-02",
+      "requires": [
+        "PD-01"
+      ],
+      "group": "SECURITY"
+    },
+    {
+      "id": "PD-03",
+      "requires": [
+        "PD-02",
+        "DS-02"
+      ]
+    },
+    {
+      "id": "PD-04",
+      "requires": [
+        "PD-03"
+      ]
+    },
+    {
+      "id": "PD-05",
+      "requires": [
+        "PD-04"
+      ]
+    },
+    {
+      "id": "PD-06",
+      "requires": [
+        "PD-05"
+      ]
+    },
+    {
+      "id": "PD-07",
+      "requires": [
+        "PD-06"
+      ]
+    },
+    {
+      "id": "ARCH",
+      "requires": [
+        "PD-07"
+      ]
+    },
+    {
+      "id": "DEV",
+      "requires": [
+        "ARCH"
+      ]
+    },
+    {
+      "id": "QA",
+      "requires": [
+        "DEV"
+      ]
+    },
+    {
+      "id": "OPS",
+      "requires": [
+        "QA"
+      ]
+    }
+  ]
+}
