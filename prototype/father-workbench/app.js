@@ -76,6 +76,21 @@ function providerSupportsAction(id,action){
   return (provider?.write_capabilities||[]).includes(action);
 }
 
+function activeDevBinding(project){
+  if(!project)return null;
+  const tracked=model.providerBindings[project.project_id]?.bindings?.primary;
+  if(tracked?.provider && tracked?.repository && tracked?.branch){
+    return tracked;
+  }
+  const dev=project.dev_platform||{};
+  return{
+    provider:dev.primary_provider||"github",
+    repository:dev.repository||project.repository,
+    branch:dev.branch||project.branch,
+    status:"REGISTRY_FALLBACK"
+  };
+}
+
 function stageById(projectId,stageId){
   const state=stageState(projectId);
   return state?.stages?.find((item)=>item.id===stageId)||null;
@@ -255,7 +270,10 @@ function renderWorkspace(){
   byId("projectDescription").textContent=state.description||"—";
   byId("projectStatus").textContent=project.status||"UNKNOWN";
   byId("projectStatus").className="chip "+stateClass(project.status);
-  byId("projectBranch").textContent=project.branch||"branch TBD";
+  const activeBinding=activeDevBinding(project);
+  byId("projectBranch").textContent=
+    (activeBinding?.provider||"provider TBD")+" · "+
+    (activeBinding?.branch||"branch TBD");
 
   renderKpis(project,state,branch);
   renderConveyor(state);
@@ -1270,7 +1288,8 @@ function renderScmActions(project,state,branch){
     !branch||
     branch.relation_to_main==="DIVERGED";
 
-  const providerId=project.dev_platform?.primary_provider||"github";
+  const activeBinding=activeDevBinding(project);
+  const providerId=activeBinding?.provider||"github";
   const actions=[
     ["Create branch",!providerSupportsAction(providerId,"SCM.CREATE_BRANCH"),"SCM.CREATE_BRANCH"],
     ["Open PR / MR",!providerSupportsAction(providerId,"SCM.OPEN_CHANGE_REQUEST"),"SCM.OPEN_CHANGE_REQUEST"],
@@ -1331,13 +1350,13 @@ function renderScmActions(project,state,branch){
         if(!branchName)return;
 
         approved=window.confirm(
-          "Create branch '"+branchName+"' from '"+project.branch+"' via FATHER?"
+          "Create branch '"+branchName+"' from '"+activeBinding.branch+"' via FATHER?"
         );
         if(!approved)return;
 
         params={
           branch_name:branchName,
-          base_ref:project.branch
+          base_ref:activeBinding.branch
         };
         result.textContent="Executing audited branch creation…";
       }else if(action==="SCM.OPEN_CHANGE_REQUEST"){
@@ -1354,18 +1373,18 @@ function renderScmActions(project,state,branch){
         if(!baseRef)return;
 
         const providerConfig=providerById(
-          project.dev_platform?.primary_provider||"github"
+          activeBinding?.provider||"github"
         );
         const draftSupported=providerConfig?.draft_change_request_supported!==false;
         approved=window.confirm(
           "Open "+(draftSupported?"draft ":"")+"change request from '"+
-          project.branch+"' to '"+baseRef+"'?"
+          activeBinding.branch+"' to '"+baseRef+"'?"
         );
         if(!approved)return;
 
         params={
           title,
-          head_ref:project.branch,
+          head_ref:activeBinding.branch,
           base_ref:baseRef,
           draft:draftSupported
         };
@@ -1400,6 +1419,37 @@ function renderScmActions(project,state,branch){
       }
     };
   });
+}
+
+async function switchPrimaryProvider(
+  projectId,
+  targetProvider,
+  expectedBindingEtag,
+  confirmation
+){
+  try{
+    const response=await fetch("/api/migrations/switch-primary",{
+      method:"POST",
+      headers:{
+        "Content-Type":"application/json",
+        "X-FATHER-Action":"confirm"
+      },
+      body:JSON.stringify({
+        project_id:projectId,
+        target_provider:targetProvider,
+        expected_binding_etag:expectedBindingEtag,
+        confirmation,
+        confirm:true
+      })
+    });
+    const body=await response.json().catch(()=>({}));
+    return{http_status:response.status,...body};
+  }catch(_error){
+    return{
+      status:"BLOCKED",
+      errors:["CONTROL_PLANE_API_UNAVAILABLE"]
+    };
+  }
 }
 
 async function submitMigrationCutoverReview(
@@ -1715,11 +1765,13 @@ function renderGitMap(){
 function renderProviderMatrix(){
   const project=projectById(selectedProject)||{};
   const dev=project.dev_platform||{};
-  const primary=dev.primary_provider||"github";
-  const targets=new Set(dev.migration_targets||[]);
   const bindingEnvelope=model.providerBindings[project.project_id]||{};
   const bindings=bindingEnvelope.bindings||{};
+  const primaryBinding=activeDevBinding(project)||{};
+  const primary=primaryBinding.provider||dev.primary_provider||"github";
+  const targets=new Set(dev.migration_targets||[]);
   const targetBindings=bindings.targets||[];
+  const historicalBindings=bindings.historical||[];
   const host=byId("providerMatrix");
 
   host.innerHTML=(model.providers.providers||[]).map((provider)=>{
@@ -1731,13 +1783,18 @@ function renderProviderMatrix(){
     const latestCutover=(model.migrationCutover[project.project_id]?.approvals||[])
       .filter((item)=>item.target_provider===provider.id)
       .slice(-1)[0];
+    const historical=historicalBindings.some(
+      (item)=>item.provider===provider.id
+    );
     const role=provider.id===primary
       ?"PRIMARY"
-      :(targets.has(provider.id)?"MIGRATION TARGET":"AVAILABLE");
+      :(historical
+        ?"HISTORICAL / ROLLBACK"
+        :(targets.has(provider.id)?"MIGRATION TARGET":"AVAILABLE"));
     const writes=(provider.write_capabilities||[]).map((cap)=>
       '<span>'+esc(cap.replace("SCM.",""))+'</span>'
     ).join("");
-    const canTarget=provider.id!==primary && targets.has(provider.id);
+    const canTarget=provider.id!==primary && runtime?.adapter_loaded;
     const verification=model.migrationVerifications[provider.id];
     const bindingText=binding
       ?binding.repository+" · "+binding.branch
@@ -1780,6 +1837,7 @@ function renderProviderMatrix(){
           '<button class="providerVerifyAction" data-provider="'+esc(provider.id)+'" '+(binding?"":"disabled")+'>Verify parity</button>'+
           '<button class="providerSecurityAction" data-provider="'+esc(provider.id)+'" '+(binding?"":"disabled")+'>Security review</button>'+
           '<button class="providerCutoverAction" data-provider="'+esc(provider.id)+'" '+(latestReview?.decision==="APPROVE"?"":"disabled")+'>Cutover gate</button>'+
+          '<button class="providerSwitchAction" data-provider="'+esc(provider.id)+'" '+(latestCutover?.decision==="APPROVE"?"":"disabled")+'>Switch primary</button>'+
           '</div>'
         :'')+
       '</div>';
@@ -2020,6 +2078,72 @@ function renderProviderMatrix(){
       renderProviderMatrix();
     };
   });
+
+  host.querySelectorAll(".providerSwitchAction:not(:disabled)").forEach((button)=>{
+    button.onclick=async()=>{
+      const target=button.dataset.provider;
+      const envelope=model.providerBindings[project.project_id]||{};
+      if(!envelope.etag){
+        window.alert("Binding ETag unavailable. Refresh FATHER.");
+        return;
+      }
+
+      const confirmation=
+        "SWITCH_PRIMARY:"+project.project_id+":"+target;
+      const typed=window.prompt(
+        "HIGH IMPACT ACTION. Type exactly:\n"+confirmation,
+        ""
+      );
+      if(typed!==confirmation){
+        window.alert("Primary switch cancelled: confirmation did not match.");
+        return;
+      }
+
+      const finalConfirm=window.confirm(
+        "Switch FATHER primary provider to "+target+
+        "? Current primary will be preserved as historical rollback binding."
+      );
+      if(!finalConfirm)return;
+
+      const output=byId("actionResult");
+      output.textContent="Re-validating cutover evidence and switching primary…";
+      output.className="actionResult";
+
+      const switched=await switchPrimaryProvider(
+        project.project_id,
+        target,
+        envelope.etag,
+        confirmation
+      );
+      if(
+        switched.status!=="APPLIED" &&
+        switched.status!=="APPLIED_POST_CUTOVER_EVIDENCE_DEGRADED"
+      ){
+        output.textContent=
+          (switched.status||"BLOCKED")+" · "+
+          (switched.errors||["UNKNOWN_ERROR"]).join(", ");
+        output.className="actionResult block";
+        return;
+      }
+
+      model.migrationVerifications={};
+      await loadRuntimeHistory(project);
+      await loadLiveState(project);
+      output.textContent=
+        switched.status+
+        " · primary "+esc(switched.primary?.provider||target)+
+        " · rollback preserved"+
+        (switched.post_cutover_status==="FAILED"
+          ?" · POST-CUTOVER EVIDENCE DEGRADED"
+          :" · post-cutover evidence captured")+
+        " · Git commit required";
+      output.className=
+        "actionResult "+
+        (switched.status==="APPLIED"?"ok":"block");
+      render();
+    };
+  });
+
 }
 
 byId("evidencePackBtn").onclick=handleEvidencePackExport;

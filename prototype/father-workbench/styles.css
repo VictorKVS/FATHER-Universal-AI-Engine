@@ -95,3 +95,7 @@ main{padding:27px 32px 60px;overflow:hidden}.top,.hero,.sectionTitle,.panelHead{
 .providerCutoverAction{border:1px solid #704884;background:#1c1023;color:#d9b5f0;border-radius:6px;padding:6px;font-size:7px;cursor:pointer}
 .providerCutoverAction:hover{border-color:#b889ff88}
 .providerCutoverAction:disabled{opacity:.38;cursor:not-allowed}
+
+.providerSwitchAction{border:1px solid #ffb84d88;background:#241b0c;color:#ffd18a;border-radius:6px;padding:6px;font-size:7px;cursor:pointer}
+.providerSwitchAction:hover{border-color:#ffb84d}
+.providerSwitchAction:disabled{opacity:.35;cursor:not-allowed}
