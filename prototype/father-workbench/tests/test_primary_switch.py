@@ -64,6 +64,127 @@ def current_refs():
     }
 
 
+class PostCutoverVerificationTests(unittest.TestCase):
+    def _adapter(self, provider: str, ref_sha: str):
+        class Adapter:
+            def live_state(self, repository, branch):
+                return {
+                    "provider": provider,
+                    "repository": {"full_name": repository},
+                    "branch": {
+                        "name": branch,
+                        "head_sha": "abc123",
+                    },
+                }
+
+            def ref_inventory(self, repository):
+                return {
+                    "provider": provider,
+                    "repository": repository,
+                    "default_branch": "main",
+                    "branches": {"main": ref_sha},
+                    "tags": {"v1": ref_sha},
+                    "complete": True,
+                    "limitations": [],
+                }
+
+            def access_policy(self, repository, branch):
+                return {
+                    "provider": provider,
+                    "repository": repository,
+                    "branch": branch,
+                    "complete": True,
+                    "protected": True,
+                    "force_push_allowed": False,
+                    "deletion_allowed": False,
+                    "review_required": True,
+                    "code_owner_review_required": False,
+                    "required_status_checks": True,
+                    "admin_enforcement": True,
+                    "direct_push_restricted": True,
+                    "limitations": [],
+                }
+
+        return Adapter()
+
+    def test_full_post_cutover_parity_passes(self) -> None:
+        evidence = FakeEvidence()
+
+        def adapter(provider):
+            return self._adapter(provider, "abc123")
+
+        with (
+            patch.object(
+                server,
+                "provider_adapter",
+                side_effect=adapter,
+            ),
+            patch.object(server, "EVIDENCE_STORE", evidence),
+        ):
+            result = server.verify_post_cutover(
+                "P-1",
+                {
+                    "provider": "github",
+                    "repository": "owner/repo",
+                    "branch": "main",
+                },
+                {
+                    "provider": "gitlab",
+                    "repository": "group/repo",
+                    "branch": "main",
+                },
+                "ACT-1",
+            )
+
+        self.assertEqual(result["status"], "PASS")
+        self.assertFalse(result["rollback_recommended"])
+        self.assertEqual(
+            result["ref_parity"]["state"],
+            "PASS",
+        )
+        self.assertEqual(
+            result["access_policy"]["state"],
+            "PASS_WITH_REVIEW",
+        )
+
+    def test_ref_mismatch_recommends_rollback(self) -> None:
+        evidence = FakeEvidence()
+
+        def adapter(provider):
+            sha = "abc123" if provider == "github" else "def456"
+            return self._adapter(provider, sha)
+
+        with (
+            patch.object(
+                server,
+                "provider_adapter",
+                side_effect=adapter,
+            ),
+            patch.object(server, "EVIDENCE_STORE", evidence),
+        ):
+            result = server.verify_post_cutover(
+                "P-1",
+                {
+                    "provider": "github",
+                    "repository": "owner/repo",
+                    "branch": "main",
+                },
+                {
+                    "provider": "gitlab",
+                    "repository": "group/repo",
+                    "branch": "main",
+                },
+                "ACT-2",
+            )
+
+        self.assertEqual(result["status"], "DEGRADED")
+        self.assertTrue(result["rollback_recommended"])
+        self.assertIn(
+            "POST_CUTOVER_REF_PARITY_FAILED",
+            result["blockers"],
+        )
+
+
 class PrimarySwitchTests(unittest.TestCase):
     def setUp(self) -> None:
         self.project = {
@@ -175,6 +296,18 @@ class PrimarySwitchTests(unittest.TestCase):
                 ),
                 patch.object(
                     server,
+                    "verify_post_cutover",
+                    return_value={
+                        "status": "PASS",
+                        "blockers": [],
+                        "rollback_recommended": False,
+                        "evidence": {
+                            "evidence_id": "EVD-POST-CUTOVER-VERIFY"
+                        },
+                    },
+                ),
+                patch.object(
+                    server,
                     "capture_live_provider_evidence",
                     return_value={
                         "evidence_id": "EVD-POST-CUTOVER",
@@ -195,6 +328,8 @@ class PrimarySwitchTests(unittest.TestCase):
                 "github",
             )
             self.assertTrue(result["rollback_binding_preserved"])
+            self.assertEqual(result["post_cutover_status"], "PASS")
+            self.assertFalse(result["rollback_recommended"])
             self.assertEqual(
                 result["cutover_approval_id"],
                 approval["approval_id"],
@@ -222,6 +357,107 @@ class PrimarySwitchTests(unittest.TestCase):
                     for item in evidence.events
                 )
             )
+
+    def test_switch_primary_marks_degraded_when_post_cutover_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (
+                bindings,
+                security,
+                cutover,
+                target_etag,
+                _approval,
+            ) = self.prepare_stores(root)
+
+            evidence = FakeEvidence()
+            audit = []
+
+            with (
+                patch.object(server, "project_by_id", return_value=self.project),
+                patch.object(server, "PROVIDER_BINDING_STORE", bindings),
+                patch.object(
+                    server,
+                    "MIGRATION_SECURITY_REVIEW_STORE",
+                    security,
+                ),
+                patch.object(server, "MIGRATION_CUTOVER_STORE", cutover),
+                patch.object(
+                    server,
+                    "verify_migration_target",
+                    return_value=current_verification(),
+                ),
+                patch.object(server, "EVIDENCE_STORE", evidence),
+                patch.object(
+                    server,
+                    "write_audit_event",
+                    side_effect=audit.append,
+                ),
+                patch.object(
+                    server,
+                    "verify_post_cutover",
+                    return_value={
+                        "status": "DEGRADED",
+                        "blockers": [
+                            "POST_CUTOVER_REF_PARITY_FAILED"
+                        ],
+                        "rollback_recommended": True,
+                    },
+                ),
+                patch.object(
+                    server,
+                    "live_binding_state",
+                    return_value={
+                        "provider": "gitlab",
+                        "repository": {
+                            "full_name": "group/repo"
+                        },
+                        "branch": {
+                            "name": "main",
+                            "head_sha": "abc123",
+                        },
+                        "workflow_runs": [],
+                        "change_requests": [],
+                    },
+                ),
+                patch.object(
+                    server,
+                    "capture_live_provider_evidence",
+                    return_value={
+                        "evidence_id": "EVD-LIVE",
+                        "deduplicated": False,
+                    },
+                ),
+            ):
+                result = server.switch_primary_provider(
+                    "P-1",
+                    "gitlab",
+                    target_etag,
+                )
+
+            self.assertEqual(
+                result["status"],
+                "APPLIED_POST_CUTOVER_DEGRADED",
+            )
+            self.assertEqual(
+                result["post_cutover_status"],
+                "DEGRADED",
+            )
+            self.assertTrue(result["rollback_recommended"])
+            self.assertIn(
+                "POST_CUTOVER_REF_PARITY_FAILED",
+                result["post_cutover"]["blockers"],
+            )
+            state, _etag = bindings.read(self.project)
+            self.assertEqual(
+                state["primary"]["provider"],
+                "gitlab",
+            )
+            rollback = next(
+                item
+                for item in state["targets"]
+                if item.get("status") == "ROLLBACK_CANDIDATE"
+            )
+            self.assertEqual(rollback["provider"], "github")
 
     def test_switch_primary_rejects_stale_cutover_approval(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -2117,7 +2117,7 @@ function renderProviderMatrix(){
       );
       if(
         switched.status!=="APPLIED" &&
-        switched.status!=="APPLIED_POST_CUTOVER_EVIDENCE_DEGRADED"
+        switched.status!=="APPLIED_POST_CUTOVER_DEGRADED"
       ){
         output.textContent=
           (switched.status||"BLOCKED")+" · "+
@@ -2133,9 +2133,12 @@ function renderProviderMatrix(){
         switched.status+
         " · primary "+esc(switched.primary?.provider||target)+
         " · rollback preserved"+
-        (switched.post_cutover_status==="FAILED"
-          ?" · POST-CUTOVER EVIDENCE DEGRADED"
-          :" · post-cutover evidence captured")+
+        (switched.post_cutover_status!=="PASS"
+          ?" · POST-CUTOVER DEGRADED · ROLLBACK RECOMMENDED"+
+            (switched.post_cutover?.blockers?.length
+              ?" · "+switched.post_cutover.blockers.join(", ")
+              :"")
+          :" · POST-CUTOVER PASS · refs/access verified")+
         " · Git commit required";
       output.className=
         "actionResult "+
