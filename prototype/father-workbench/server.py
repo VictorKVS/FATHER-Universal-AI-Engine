@@ -73,6 +73,26 @@ def branch_state(project: dict[str, Any]) -> dict[str, Any] | None:
     return None
 
 
+def project_stage_state(project: dict[str, Any]) -> dict[str, Any]:
+    reference = project.get("stage_state_ref")
+    if not reference:
+        raise FileNotFoundError("Project has no stage_state_ref")
+    path = (REPO_ROOT / str(reference)).resolve()
+    path.relative_to(REPO_ROOT)
+    state = read_json(path)
+    if state.get("project_id") != project.get("project_id"):
+        raise ValueError("Stage state project_id mismatch")
+    return state
+
+
+def stage_by_id(project: dict[str, Any], stage_id: str) -> dict[str, Any] | None:
+    state = project_stage_state(project)
+    for stage in state.get("stages", []):
+        if stage.get("id") == stage_id:
+            return stage
+    return None
+
+
 def plan_action(project_id: str, action: str) -> dict[str, Any]:
     project = project_by_id(project_id)
     action_id = f"ACT-{uuid.uuid4().hex[:12].upper()}"
@@ -174,8 +194,9 @@ class FatherHandler(BaseHTTPRequestHandler):
                     {
                         "status": "ok",
                         "service": "father-project-workbench",
-                        "version": "0.1",
+                        "version": "0.2",
                         "provider_mutations": False,
+                        "stage_state_api": True,
                     }
                 )
                 return
@@ -193,17 +214,45 @@ class FatherHandler(BaseHTTPRequestHandler):
                 return
 
             if path.startswith("/api/projects/"):
-                project_id = unquote(path.removeprefix("/api/projects/"))
+                parts = [unquote(part) for part in path.split("/") if part]
+                if len(parts) < 3:
+                    self._error_json(HTTPStatus.NOT_FOUND, "ENDPOINT_NOT_FOUND")
+                    return
+
+                project_id = parts[2]
                 project = project_by_id(project_id)
                 if not project:
                     self._error_json(HTTPStatus.NOT_FOUND, "PROJECT_NOT_FOUND")
                     return
-                self._json(
-                    {
-                        "project": project,
-                        "branch_state": branch_state(project),
-                    }
-                )
+
+                if len(parts) == 3:
+                    self._json(
+                        {
+                            "project": project,
+                            "branch_state": branch_state(project),
+                            "stage_state": project_stage_state(project),
+                        }
+                    )
+                    return
+
+                if len(parts) == 4 and parts[3] == "stages":
+                    self._json(project_stage_state(project))
+                    return
+
+                if len(parts) == 5 and parts[3] == "stages":
+                    stage = stage_by_id(project, parts[4])
+                    if not stage:
+                        self._error_json(HTTPStatus.NOT_FOUND, "STAGE_NOT_FOUND")
+                        return
+                    self._json(
+                        {
+                            "project_id": project_id,
+                            "stage": stage,
+                        }
+                    )
+                    return
+
+                self._error_json(HTTPStatus.NOT_FOUND, "ENDPOINT_NOT_FOUND")
                 return
 
             self._serve_static(path)
