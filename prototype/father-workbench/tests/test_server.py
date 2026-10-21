@@ -61,6 +61,42 @@ class ActionPolicyTests(unittest.TestCase):
         self.assertEqual(plan["reasons"], ["PROJECT_NOT_FOUND"])
 
 
+class FakeEvidenceStore:
+    def __init__(self, fail_store: bool = False) -> None:
+        self.fail_store = fail_store
+        self.events = []
+        self.evidence = []
+
+    def append_manufacturing_event(
+        self,
+        *,
+        project_id,
+        event_type,
+        source_ref,
+        payload,
+    ):
+        event = {
+            "event_id": f"MFG-{len(self.events) + 1}",
+            "project_id": project_id,
+            "event_type": event_type,
+            "source_ref": source_ref,
+            "payload": payload,
+        }
+        self.events.append(event)
+        return event
+
+    def store_evidence(self, **kwargs):
+        if self.fail_store:
+            raise OSError("simulated evidence failure")
+        evidence = {
+            "evidence_id": f"EVD-{len(self.evidence) + 1}",
+            "deduplicated": False,
+            **kwargs,
+        }
+        self.evidence.append(evidence)
+        return evidence
+
+
 class ExecuteActionTests(unittest.TestCase):
     def test_create_branch_blocks_without_write_credential(self) -> None:
         class ReadOnlyAdapter:
@@ -106,9 +142,11 @@ class ExecuteActionTests(unittest.TestCase):
                     "reconciled": True,
                 }
 
+        evidence_store = FakeEvidenceStore()
         with (
             patch.object(server, "GitHubAdapter", return_value=WritableAdapter()),
             patch.object(server, "write_audit_event", side_effect=events.append),
+            patch.object(server, "EVIDENCE_STORE", evidence_store),
         ):
             result = server.execute_action(
                 "FATHER-PLATFORM-001",
@@ -144,9 +182,11 @@ class ExecuteActionTests(unittest.TestCase):
                     "reconciled": True,
                 }
 
+        evidence_store = FakeEvidenceStore()
         with (
             patch.object(server, "GitHubAdapter", return_value=WritableAdapter()),
             patch.object(server, "write_audit_event", side_effect=events.append),
+            patch.object(server, "EVIDENCE_STORE", evidence_store),
         ):
             result = server.execute_action(
                 "FATHER-PLATFORM-001",
@@ -161,6 +201,47 @@ class ExecuteActionTests(unittest.TestCase):
         self.assertTrue(result["provider_mutation"])
         self.assertEqual(result["status"], "SUCCEEDED")
         self.assertEqual([event["status"] for event in events], ["EXECUTING", "SUCCEEDED"])
+
+
+    def test_successful_mutation_reports_evidence_degradation(self) -> None:
+        events = []
+
+        class WritableAdapter:
+            can_write = True
+
+            def create_branch(self, repository, branch_name, base_ref):
+                return {
+                    "provider": "github",
+                    "repository": repository,
+                    "branch": branch_name,
+                    "base_ref": base_ref,
+                    "head_sha": "abc123",
+                    "reconciled": True,
+                }
+
+        evidence_store = FakeEvidenceStore(fail_store=True)
+        with (
+            patch.object(server, "GitHubAdapter", return_value=WritableAdapter()),
+            patch.object(server, "write_audit_event", side_effect=events.append),
+            patch.object(server, "EVIDENCE_STORE", evidence_store),
+        ):
+            result = server.execute_action(
+                "FATHER-PLATFORM-001",
+                "SCM.CREATE_BRANCH",
+                {
+                    "branch_name": "feature/evidence-degraded",
+                    "base_ref": "feature/father-project-registry-v01",
+                },
+            )
+
+        self.assertTrue(result["provider_mutation"])
+        self.assertFalse(result["allowed"])
+        self.assertEqual(result["status"], "SUCCEEDED_EVIDENCE_DEGRADED")
+        self.assertEqual(result["reasons"], ["EVIDENCE_PERSIST_FAILED"])
+        self.assertEqual(
+            [event["status"] for event in events],
+            ["EXECUTING", "SUCCEEDED", "SUCCEEDED_EVIDENCE_DEGRADED"],
+        )
 
 
 class RegistryContractTests(unittest.TestCase):
