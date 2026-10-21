@@ -1,0 +1,59 @@
+{
+  "schema_version": "father.project_registry.instances.v0.1",
+  "projects": [
+    {
+      "project_id": "FATHER-ACADEMY-OSINT-001",
+      "name": "ALINA OSINT ACADEMY",
+      "short_name": "ALINA_OSINT_ACADEMY",
+      "project_type": "AGENT_TRAINING_FACTORY",
+      "status": "SECURITY_INTAKE",
+      "current_stage": "PD-02_INFORMATION_SECURITY",
+      "owner": "FATHER",
+      "repository": "VictorKVS/FATHER-Universal-AI-Engine",
+      "branch": "feature/alina-osint-academy-v01",
+      "root_path": "projects/alina_osint_academy",
+      "product_gate": "PASS",
+      "security_gate": "IN_PROGRESS",
+      "pre_design_gate": "BLOCKED",
+      "architecture_gate": "BLOCKED",
+      "runtime_status": "PARTIAL_REVALIDATION_REQUIRED",
+      "manufacturing_kb_case_id": "FATHER-ACADEMY-OSINT-001",
+      "manufactured_objects": [
+        "FATHER-OSINT-STUDENT-001"
+      ],
+      "tags": [
+        "FATHER",
+        "ALINA",
+        "OSINT",
+        "ACADEMY",
+        "TRAINING"
+      ]
+    },
+    {
+      "project_id": "LIFE-001",
+      "name": "Personal Lifelong Companion",
+      "short_name": "LIFE_COMPANION",
+      "project_type": "AGENT_PRODUCT",
+      "status": "PRODUCT_DISCOVERY",
+      "current_stage": "PD-01_PRODUCT_MANAGER",
+      "owner": "FATHER",
+      "repository": "VictorKVS/OTUS-",
+      "branch": "feature/father-ecosystem-workspace-v03",
+      "root_path": "factory/ecosystem-v03/cases/LIFE-001",
+      "product_gate": "IN_PROGRESS",
+      "security_gate": "NOT_STARTED",
+      "pre_design_gate": "BLOCKED",
+      "architecture_gate": "BLOCKED",
+      "runtime_status": "NOT_IMPLEMENTED",
+      "manufacturing_kb_case_id": "LIFE-001",
+      "external_project_refs": [
+        "VictorKVS/FATHER-Universal-AI-Engine/agents/life_companion"
+      ],
+      "tags": [
+        "FATHER",
+        "LIFE",
+        "PERSONAL_AGENT"
+      ]
+    }
+  ]
+}
