@@ -45,6 +45,11 @@ from providers.gitlab_adapter import GitLabAdapter
 from providers.gitverse_adapter import GitVerseAdapter
 from providers.sourcecraft_adapter import SourceCraftAdapter
 from providers.gitflic_adapter import GitFlicAdapter
+from production_records import (
+    upsert_decision_record,
+    upsert_risk_record,
+    upsert_specialist_analysis,
+)
 
 APP_DIR = Path(__file__).resolve().parent
 REPO_ROOT = APP_DIR.parents[1]
@@ -854,6 +859,146 @@ def start_stage(
     }
 
 
+def update_production_record(
+    project_id: str,
+    stage_id: str,
+    record_type: str,
+    record: dict[str, Any],
+    expected_etag: str,
+) -> dict[str, Any]:
+    project = project_by_id(project_id)
+    if not project:
+        return {
+            "status": "BLOCKED",
+            "errors": ["PROJECT_NOT_FOUND"],
+        }
+
+    state, current_etag = PROJECT_STATE_STORE.read(project)
+    if current_etag != expected_etag:
+        return {
+            "status": "CONFLICT",
+            "errors": ["STATE_ETAG_CONFLICT"],
+            "current_etag": current_etag,
+        }
+
+    record_type = record_type.upper().strip()
+    try:
+        if record_type == "ANALYSIS":
+            applied = upsert_specialist_analysis(
+                state=state,
+                stage_id=stage_id,
+                analysis_id=str(record.get("analysis_id", "")),
+                role=str(record.get("role", "")),
+                title=str(record.get("title", "")),
+                summary=str(record.get("summary", "")),
+                status=str(record.get("status", "")),
+                findings=list(record.get("findings") or []),
+                recommendations=list(record.get("recommendations") or []),
+                evidence_refs=list(record.get("evidence_refs") or []),
+                author=str(record.get("author", "")),
+            )
+            record_id = applied["record"]["analysis_id"]
+            event_type = "SPECIALIST_ANALYSIS_UPDATED"
+        elif record_type == "DECISION":
+            applied = upsert_decision_record(
+                state=state,
+                stage_id=stage_id,
+                decision_id=str(record.get("decision_id", "")),
+                title=str(record.get("title", "")),
+                context=str(record.get("context", "")),
+                decision=str(record.get("decision", "")),
+                rationale=str(record.get("rationale", "")),
+                alternatives=list(record.get("alternatives") or []),
+                rejected_reasons=list(record.get("rejected_reasons") or []),
+                constraints=list(record.get("constraints") or []),
+                evidence_refs=list(record.get("evidence_refs") or []),
+                owner=str(record.get("owner", "")),
+                status=str(record.get("status", "")),
+                revisit_triggers=list(record.get("revisit_triggers") or []),
+            )
+            record_id = applied["record"]["decision_id"]
+            event_type = "DECISION_RECORD_UPDATED"
+        elif record_type == "RISK":
+            applied = upsert_risk_record(
+                state=state,
+                stage_id=stage_id,
+                risk_id=str(record.get("risk_id", "")),
+                title=str(record.get("title", "")),
+                description=str(record.get("description", "")),
+                likelihood=str(record.get("likelihood", "")),
+                impact=str(record.get("impact", "")),
+                treatment=str(record.get("treatment", "")),
+                owner=str(record.get("owner", "")),
+                status=str(record.get("status", "")),
+                evidence_refs=list(record.get("evidence_refs") or []),
+            )
+            record_id = applied["record"]["risk_id"]
+            event_type = "RISK_RECORD_UPDATED"
+        else:
+            return {
+                "status": "BLOCKED",
+                "errors": ["INVALID_RECORD_TYPE"],
+            }
+    except (ValueError, TypeError) as exc:
+        return {
+            "status": "BLOCKED",
+            "errors": [str(exc)],
+            "current_etag": current_etag,
+        }
+
+    try:
+        new_etag = PROJECT_STATE_STORE.write(
+            project,
+            applied["state"],
+            current_etag,
+        )
+    except StateConflictError:
+        _state, latest_etag = PROJECT_STATE_STORE.read(project)
+        return {
+            "status": "CONFLICT",
+            "errors": ["STATE_ETAG_CONFLICT"],
+            "current_etag": latest_etag,
+        }
+
+    payload = {
+        "project_id": project_id,
+        "stage_id": stage_id,
+        "record_type": record_type,
+        "record_id": record_id,
+        "previous_status": applied.get("previous_status"),
+        "record": applied["record"],
+        "quality_warnings": applied.get("quality_warnings") or [],
+        "previous_etag": current_etag,
+        "new_etag": new_etag,
+    }
+    event = EVIDENCE_STORE.append_manufacturing_event(
+        project_id=project_id,
+        event_type=event_type,
+        source_ref=f"{record_type}:{stage_id}:{record_id}",
+        payload=payload,
+    )
+    evidence = EVIDENCE_STORE.store_evidence(
+        project_id=project_id,
+        evidence_type="PRODUCTION_RECORD_CHANGE",
+        provider=None,
+        payload=payload,
+        subject_key=f"{record_type}:{stage_id}:{record_id}:{new_etag}",
+        refs={"manufacturing_event_id": event["event_id"]},
+    )
+    return {
+        "status": "APPLIED",
+        "project_id": project_id,
+        "stage_id": stage_id,
+        "record_type": record_type,
+        "record": applied["record"],
+        "quality_warnings": applied.get("quality_warnings") or [],
+        "new_etag": new_etag,
+        "evidence": evidence,
+        "manufacturing_event_id": event["event_id"],
+        "git_commit_required": True,
+    }
+
+
 def write_audit_event(event: dict[str, Any]) -> None:
     RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
     with AUDIT_FILE.open("a", encoding="utf-8") as handle:
@@ -1236,6 +1381,11 @@ class FatherHandler(BaseHTTPRequestHandler):
                         "durable_evidence_pack": True,
                         "safe_document_editor": True,
                         "explicit_stage_start": True,
+                        "production_records": [
+                            "ANALYSIS",
+                            "DECISION",
+                            "RISK",
+                        ],
                     }
                 )
                 return
@@ -1460,6 +1610,7 @@ class FatherHandler(BaseHTTPRequestHandler):
             "/api/evidence/export",
             "/api/documents/write",
             "/api/stages/start",
+            "/api/records/upsert",
         }:
             self._error_json(HTTPStatus.NOT_FOUND, "ENDPOINT_NOT_FOUND")
             return
@@ -1549,6 +1700,50 @@ class FatherHandler(BaseHTTPRequestHandler):
                 rationale,
                 evidence_refs,
                 decided_by,
+                expected_etag,
+            )
+            if result["status"] == "CONFLICT":
+                self._json(result, HTTPStatus.CONFLICT)
+            elif result["status"] == "BLOCKED":
+                self._json(result, HTTPStatus.BAD_REQUEST)
+            else:
+                self._json(result)
+            return
+
+        if path == "/api/records/upsert":
+            if self.headers.get("X-FATHER-Action") != "confirm":
+                self._error_json(
+                    HTTPStatus.FORBIDDEN,
+                    "EXPLICIT_ACTION_HEADER_REQUIRED",
+                )
+                return
+            if body.get("confirm") is not True:
+                self._error_json(
+                    HTTPStatus.FORBIDDEN,
+                    "EXPLICIT_CONFIRMATION_REQUIRED",
+                )
+                return
+
+            stage_id = str(body.get("stage_id", "")).strip()
+            record_type = str(body.get("record_type", "")).strip()
+            expected_etag = str(body.get("expected_etag", "")).strip()
+            record = body.get("record")
+            if (
+                not stage_id
+                or not record_type
+                or not expected_etag
+                or not isinstance(record, dict)
+            ):
+                self._error_json(
+                    HTTPStatus.BAD_REQUEST,
+                    "INVALID_PRODUCTION_RECORD_REQUEST",
+                )
+                return
+            result = update_production_record(
+                project_id,
+                stage_id,
+                record_type,
+                record,
                 expected_etag,
             )
             if result["status"] == "CONFLICT":
