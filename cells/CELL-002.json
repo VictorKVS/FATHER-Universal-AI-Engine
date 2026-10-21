@@ -1,0 +1,25 @@
+{
+  "schema_version": "father.factory_cell.v0.1",
+  "cell_id": "CELL-002",
+  "name": "One Agent + Two LLMs — Primary/Fallback",
+  "status": "IMPLEMENTED_PROTOTYPE",
+  "mode": "PRIMARY_FALLBACK",
+  "agent_id": "FATHER-MINIMAL-AGENT-001",
+  "model_ids": [
+    "FATHER-LLM-SLOT-A-001",
+    "FATHER-LLM-SLOT-B-001"
+  ],
+  "test_model_ids": [
+    "FATHER-MODEL-FAIL-TEST-001",
+    "FATHER-MODEL-DETERMINISTIC-TEST-001"
+  ],
+  "processor": "FATHER_UNIVERSAL_PROCESSOR_V0_1",
+  "routing_contract": "PRIMARY_THEN_FALLBACK",
+  "input_contract": "MessageEnvelope",
+  "output_contract": "MessageEnvelope",
+  "evidence_required": true,
+  "next_modes": [
+    "FAN_OUT_COMPARE",
+    "JUDGE_SELECT"
+  ]
+}

@@ -20,7 +20,10 @@
   ],
   "allowed_models": [
     "FATHER-LLM-OPENAI-COMPAT-001",
-    "FATHER-MODEL-DETERMINISTIC-TEST-001"
+    "FATHER-MODEL-DETERMINISTIC-TEST-001",
+    "FATHER-LLM-SLOT-A-001",
+    "FATHER-LLM-SLOT-B-001",
+    "FATHER-MODEL-FAIL-TEST-001"
   ],
   "tools": [],
   "policies": {

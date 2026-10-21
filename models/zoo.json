@@ -18,6 +18,30 @@
       "status": "TEST_ONLY",
       "runtime_ref": "models/deterministic_test/model.runtime.json",
       "production_candidate": false
+    },
+    {
+      "model_id": "FATHER-LLM-SLOT-A-001",
+      "name": "OpenAI-Compatible LLM Slot A",
+      "kind": "LLM",
+      "status": "CONFIGURABLE",
+      "runtime_ref": "models/openai_compatible_a/model.runtime.json",
+      "production_candidate": true
+    },
+    {
+      "model_id": "FATHER-LLM-SLOT-B-001",
+      "name": "OpenAI-Compatible LLM Slot B",
+      "kind": "LLM",
+      "status": "CONFIGURABLE",
+      "runtime_ref": "models/openai_compatible_b/model.runtime.json",
+      "production_candidate": true
+    },
+    {
+      "model_id": "FATHER-MODEL-FAIL-TEST-001",
+      "name": "Forced Failure Contract Test Model",
+      "kind": "TEST_DOUBLE",
+      "status": "TEST_ONLY",
+      "runtime_ref": "models/failing_test/model.runtime.json",
+      "production_candidate": false
     }
   ]
 }

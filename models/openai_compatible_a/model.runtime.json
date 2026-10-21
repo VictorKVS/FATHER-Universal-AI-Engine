@@ -1,0 +1,25 @@
+{
+  "schema_version": "father.model.runtime.v0.1",
+  "model_id": "FATHER-LLM-SLOT-A-001",
+  "name": "OpenAI-Compatible LLM Slot A",
+  "kind": "LLM",
+  "provider_type": "openai_compatible",
+  "status": "CONFIGURABLE",
+  "endpoint": {
+    "base_url_env": "FATHER_LLM_A_BASE_URL",
+    "api_key_env": "FATHER_LLM_A_API_KEY",
+    "model_env": "FATHER_LLM_A_MODEL",
+    "path": "/chat/completions",
+    "timeout_seconds": 60
+  },
+  "capabilities": [
+    "chat",
+    "text_generation",
+    "system_prompt"
+  ],
+  "runtime_policy": {
+    "credentials_server_side": true,
+    "secret_values_in_registry": false,
+    "persist_hidden_reasoning": false
+  }
+}

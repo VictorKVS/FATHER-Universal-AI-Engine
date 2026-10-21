@@ -1,0 +1,16 @@
+{
+  "schema_version": "father.model.runtime.v0.1",
+  "model_id": "FATHER-MODEL-FAIL-TEST-001",
+  "name": "Forced Failure Contract Test Model",
+  "kind": "TEST_DOUBLE",
+  "provider_type": "failing_test",
+  "status": "TEST_ONLY",
+  "capabilities": [
+    "contract_testing"
+  ],
+  "runtime_policy": {
+    "external_network": false,
+    "production_eligible": false,
+    "failure_mode": "ALWAYS_FAIL"
+  }
+}
