@@ -54,3 +54,19 @@ Security properties in v0.1:
 - JSON body size limit;
 - action allowlist;
 - high-impact actions remain blocked without explicit evidence/approval.
+
+
+## Optional GitHub write credential
+
+Read-only GitHub access works for public repositories without a token.
+
+To enable the first audited write operation (`SCM.CREATE_BRANCH`), set a server-side environment variable before starting FATHER:
+
+```powershell
+$env:FATHER_GITHUB_TOKEN = "<fine-grained token from your secure credential store>"
+python prototype/father-workbench/server.py --port 8094
+```
+
+Do **not** put the token in source files, `.env` committed to Git, browser JavaScript, screenshots or evidence files.
+
+For this prototype use the minimum GitHub repository permission needed to create refs. Higher-impact operations remain disabled even if the token itself has broader rights.

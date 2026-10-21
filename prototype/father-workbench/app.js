@@ -449,17 +449,97 @@ function renderScmActions(project,state,branch){
 
   byId("scmActions").querySelectorAll("button:not(:disabled)").forEach((button)=>{
     button.onclick=async()=>{
-      result.textContent="Planning "+button.dataset.action+"…";
+      const action=button.dataset.action;
+      result.textContent="Planning "+action+"…";
       result.className="actionResult";
-      const plan=await planProviderAction(project.project_id,button.dataset.action);
+
+      const plan=await planProviderAction(project.project_id,action);
       const reasons=(plan.reasons||[]).join(", ");
       result.textContent=
         plan.action_id+" · "+plan.action+" · "+plan.status+
         (reasons?" · "+reasons:"")+
         " · provider mutation: "+(plan.provider_mutation?"YES":"NO");
       result.className="actionResult "+(plan.allowed?"ok":"block");
+
+      if(action!=="SCM.CREATE_BRANCH" || !plan.allowed)return;
+
+      const branchName=window.prompt(
+        "New branch name",
+        "feature/"
+      );
+      if(!branchName)return;
+
+      const approved=window.confirm(
+        "Create branch '"+branchName+"' from '"+project.branch+"' via FATHER?"
+      );
+      if(!approved)return;
+
+      result.textContent="Executing audited branch creation…";
+      result.className="actionResult";
+
+      const executed=await executeProviderAction(
+        project.project_id,
+        action,
+        {
+          branch_name:branchName,
+          base_ref:project.branch
+        }
+      );
+      const executeReasons=(executed.reasons||[]).join(", ");
+      result.textContent=
+        executed.action_id+" · "+executed.action+" · "+executed.status+
+        (executeReasons?" · "+executeReasons:"")+
+        " · provider mutation: "+(executed.provider_mutation?"YES":"NO");
+      result.className="actionResult "+(
+        executed.status==="SUCCEEDED"?"ok":"block"
+      );
+
+      if(executed.status==="SUCCEEDED"){
+        await loadLiveState(project);
+        renderWorkspace();
+        renderGitMap();
+      }
     };
   });
+}
+
+async function executeProviderAction(projectId,action,params){
+  try{
+    const response=await fetch("/api/actions/execute",{
+      method:"POST",
+      headers:{
+        "Content-Type":"application/json",
+        "X-FATHER-Action":"confirm"
+      },
+      body:JSON.stringify({
+        project_id:projectId,
+        action,
+        params,
+        confirm:true
+      })
+    });
+    if(response.ok)return await response.json();
+    const error=await response.json().catch(()=>({}));
+    return{
+      action_id:"ACT-ERROR-"+Date.now(),
+      project_id:projectId,
+      action,
+      status:"BLOCKED",
+      allowed:false,
+      reasons:[error.error||("HTTP_"+response.status)],
+      provider_mutation:false
+    };
+  }catch(_error){
+    return{
+      action_id:"ACT-ERROR-"+Date.now(),
+      project_id:projectId,
+      action,
+      status:"BLOCKED",
+      allowed:false,
+      reasons:["CONTROL_PLANE_API_UNAVAILABLE"],
+      provider_mutation:false
+    };
+  }
 }
 
 async function planProviderAction(projectId,action){
