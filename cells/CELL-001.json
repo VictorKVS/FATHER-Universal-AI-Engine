@@ -1,0 +1,15 @@
+{
+  "schema_version": "father.factory_cell.v0.1",
+  "cell_id": "CELL-001",
+  "name": "One Agent + One LLM",
+  "status": "IMPLEMENTED_PROTOTYPE",
+  "mode": "SINGLE_AGENT_SINGLE_MODEL",
+  "agent_id": "FATHER-MINIMAL-AGENT-001",
+  "model_id": "FATHER-LLM-OPENAI-COMPAT-001",
+  "test_model_id": "FATHER-MODEL-DETERMINISTIC-TEST-001",
+  "processor": "FATHER_UNIVERSAL_PROCESSOR_V0_1",
+  "input_contract": "MessageEnvelope",
+  "output_contract": "MessageEnvelope",
+  "evidence_required": true,
+  "next_cell": "CELL-002"
+}

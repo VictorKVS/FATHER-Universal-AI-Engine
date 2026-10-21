@@ -1,0 +1,23 @@
+{
+  "schema_version": "father.model_zoo.v0.1",
+  "zoo_id": "FATHER-MODEL-ZOO-001",
+  "rule": "Model credentials are never stored in Zoo records.",
+  "models": [
+    {
+      "model_id": "FATHER-LLM-OPENAI-COMPAT-001",
+      "name": "OpenAI-Compatible LLM",
+      "kind": "LLM",
+      "status": "CONFIGURABLE",
+      "runtime_ref": "models/openai_compatible/model.runtime.json",
+      "production_candidate": true
+    },
+    {
+      "model_id": "FATHER-MODEL-DETERMINISTIC-TEST-001",
+      "name": "Deterministic Contract Test Model",
+      "kind": "TEST_DOUBLE",
+      "status": "TEST_ONLY",
+      "runtime_ref": "models/deterministic_test/model.runtime.json",
+      "production_candidate": false
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "schema_version": "father.cell_zoo.v0.1",
+  "zoo_id": "FATHER-CELL-ZOO-001",
+  "cells": [
+    {
+      "cell_id": "CELL-001",
+      "name": "One Agent + One LLM",
+      "runtime_ref": "cells/CELL-001.json",
+      "status": "IMPLEMENTED_PROTOTYPE"
+    }
+  ]
+}

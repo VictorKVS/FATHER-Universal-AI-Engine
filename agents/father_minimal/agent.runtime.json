@@ -1,0 +1,44 @@
+{
+  "schema_version": "father.agent.runtime.v0.1",
+  "agent_id": "FATHER-MINIMAL-AGENT-001",
+  "name": "FATHER Minimal Processing Agent",
+  "short_name": "MINIMAL_PROCESSOR",
+  "role": "Universal information processing cell agent",
+  "status": "IMPLEMENTED_PROTOTYPE",
+  "maturity": "CELL_001",
+  "instructions": [
+    "Process the supplied canonical input according to the task.",
+    "Return only the observable result required by the output contract.",
+    "Do not expose or request hidden chain-of-thought.",
+    "Preserve uncertainty explicitly instead of inventing facts."
+  ],
+  "capabilities": [
+    "text_input",
+    "json_input",
+    "text_output",
+    "canonical_envelope"
+  ],
+  "allowed_models": [
+    "FATHER-LLM-OPENAI-COMPAT-001",
+    "FATHER-MODEL-DETERMINISTIC-TEST-001"
+  ],
+  "tools": [],
+  "policies": {
+    "human_authority": "HUMAN_DECIDES",
+    "secrets_in_prompt": false,
+    "persist_hidden_reasoning": false,
+    "unsupported_claims": "MARK_UNCERTAIN",
+    "external_mutation": false
+  },
+  "input_contract": {
+    "content_types": [
+      "text/plain",
+      "application/json"
+    ],
+    "canonical_type": "MessageEnvelope"
+  },
+  "output_contract": {
+    "content_type": "text/plain",
+    "canonical_type": "MessageEnvelope"
+  }
+}

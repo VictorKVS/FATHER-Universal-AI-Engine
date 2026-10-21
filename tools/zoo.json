@@ -1,0 +1,7 @@
+{
+  "schema_version": "father.tool_zoo.v0.1",
+  "zoo_id": "FATHER-TOOL-ZOO-001",
+  "status": "EMPTY_BASELINE",
+  "tools": [],
+  "rule": "Tools enter the runtime only through explicit typed contracts and policy."
+}

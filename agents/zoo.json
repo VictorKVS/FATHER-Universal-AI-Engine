@@ -1,0 +1,31 @@
+{
+  "schema_version": "father.agent_zoo.v0.1",
+  "zoo_id": "FATHER-AGENT-ZOO-001",
+  "rule": "Index only. Agent source/runtime specifications remain the source artifacts.",
+  "agents": [
+    {
+      "agent_id": "FATHER-OPS-TIMA-001",
+      "name": "Тимофей",
+      "status": "DESIGN",
+      "source_ref": "agents/tima/agent.yaml",
+      "runtime_ref": null,
+      "runtime_ready": false
+    },
+    {
+      "agent_id": "FATHER-LIFE-COMPANION-001",
+      "name": "Персональный агент сопровождения жизни",
+      "status": "PRODUCT_DISCOVERY",
+      "source_ref": "agents/life_companion/agent.yaml",
+      "runtime_ref": null,
+      "runtime_ready": false
+    },
+    {
+      "agent_id": "FATHER-MINIMAL-AGENT-001",
+      "name": "FATHER Minimal Processing Agent",
+      "status": "IMPLEMENTED_PROTOTYPE",
+      "source_ref": "agents/father_minimal/agent.runtime.json",
+      "runtime_ref": "agents/father_minimal/agent.runtime.json",
+      "runtime_ready": true
+    }
+  ]
+}
