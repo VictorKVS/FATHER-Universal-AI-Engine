@@ -33,3 +33,13 @@ main{padding:27px 32px 60px;overflow:hidden}.top,.hero,.sectionTitle,.panelHead{
 
 .providerAction{margin-top:9px;width:100%;border:1px solid #2b4657;background:#0b1b25;color:#dceaf2;border-radius:7px;padding:7px;font-size:8px;cursor:pointer}
 .providerAction:hover{border-color:#56d9ff66;background:#102630}
+
+.gateControl{margin-top:14px;border:1px solid #223847aa;background:#07151e;border-radius:9px;padding:11px}
+.gateControl>div:first-child{display:flex;justify-content:space-between;gap:10px;align-items:center}
+.gateHint{color:var(--muted);font-size:8px}
+.gateButtons{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap}
+.gateBtn{border:1px solid #2b4657;background:#0b1b25;color:#dceaf2;border-radius:7px;padding:7px 9px;font-size:8px;cursor:pointer}
+.gateBtn:hover{border-color:#56d9ff66;background:#102630}
+.gateOutput{margin-top:9px;border:1px solid #223847aa;border-radius:7px;padding:8px;color:var(--muted);font-size:8px;line-height:1.5}
+.gateOutput.ok{border-color:#44d17a44;color:#9ce8b4}
+.gateOutput.block{border-color:#ff5e6c44;color:#ff9eaa}

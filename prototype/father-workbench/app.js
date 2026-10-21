@@ -313,6 +313,8 @@ function renderInspector(state){
   else if(activeTab==="security")host.innerHTML=securityHtml(stage,state);
   else if(activeTab==="history")host.innerHTML=historyHtml(stage,selectedProject);
   else host.innerHTML=overviewHtml(stage);
+
+  wireGateControls(state,stage);
 }
 
 function overviewHtml(stage){
@@ -324,7 +326,169 @@ function overviewHtml(stage){
     detail("Cost impact",stage.cost_impact||"—")+
     detail("Lessons",(stage.lessons||[]).length)+
   '</div>'+
-  '<div class="analysis">'+esc(stage.analysis||"No specialist analysis yet.")+'</div>';
+  '<div class="analysis">'+esc(stage.analysis||"No specialist analysis yet.")+'</div>'+
+  '<div class="gateControl">'+
+    '<div><em>GATE ENGINE</em><div class="gateHint">Mechanical checks never auto-PASS a stage.</div></div>'+
+    '<div class="gateButtons">'+
+      '<button class="gateBtn" data-gate-action="recalculate">Recalculate Gate</button>'+
+      '<button class="gateBtn" data-gate-action="decide">Human Gate Decision</button>'+
+    '</div>'+
+    '<div class="gateOutput" id="gateOutput">No gate recalculation in this session.</div>'+
+  '</div>';
+}
+
+async function recalculateGate(projectId,stageId){
+  try{
+    const response=await fetch("/api/gates/recalculate",{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({
+        project_id:projectId,
+        stage_id:stageId
+      })
+    });
+    return await response.json();
+  }catch(_error){
+    return{
+      mechanical_status:"ERROR",
+      blockers:["CONTROL_PLANE_API_UNAVAILABLE"]
+    };
+  }
+}
+
+async function submitGateDecision(projectId,stageId,payload){
+  try{
+    const response=await fetch("/api/gates/decide",{
+      method:"POST",
+      headers:{
+        "Content-Type":"application/json",
+        "X-FATHER-Action":"confirm"
+      },
+      body:JSON.stringify({
+        project_id:projectId,
+        stage_id:stageId,
+        confirm:true,
+        ...payload
+      })
+    });
+    const body=await response.json().catch(()=>({}));
+    return{http_status:response.status,...body};
+  }catch(_error){
+    return{
+      http_status:0,
+      status:"BLOCKED",
+      errors:["CONTROL_PLANE_API_UNAVAILABLE"]
+    };
+  }
+}
+
+function wireGateControls(state,stage){
+  if(activeTab!=="overview")return;
+  const output=byId("gateOutput");
+  const recalc=document.querySelector('[data-gate-action="recalculate"]');
+  const decide=document.querySelector('[data-gate-action="decide"]');
+  if(!output||!recalc||!decide)return;
+
+  let lastEvaluation=null;
+
+  const showEvaluation=(evaluation)=>{
+    lastEvaluation=evaluation;
+    const blockers=evaluation.blockers||[];
+    output.textContent=
+      "mechanical: "+(evaluation.mechanical_status||"UNKNOWN")+
+      " · current gate: "+(evaluation.current_gate||stage.gate||"—")+
+      " · accepted docs: "+(evaluation.accepted_required_document_count??"—")+
+      "/"+(evaluation.required_document_count??"—")+
+      (blockers.length?" · blockers: "+blockers.join(", "):"")+
+      " · auto-pass: NO";
+    output.className="gateOutput "+(
+      evaluation.review_candidate?"ok":"block"
+    );
+  };
+
+  recalc.onclick=async()=>{
+    output.textContent="Recalculating gate…";
+    output.className="gateOutput";
+    showEvaluation(
+      await recalculateGate(selectedProject,stage.id)
+    );
+  };
+
+  decide.onclick=async()=>{
+    const evaluation=lastEvaluation||
+      await recalculateGate(selectedProject,stage.id);
+    showEvaluation(evaluation);
+
+    const decision=(window.prompt(
+      "Gate decision: PASS / FAIL / HOLD / RETURN",
+      evaluation.review_candidate?"PASS":"HOLD"
+    )||"").trim().toUpperCase();
+    if(!decision)return;
+
+    const rationale=(window.prompt(
+      "Decision rationale (required)",
+      ""
+    )||"").trim();
+    if(!rationale)return;
+
+    let evidenceRefs=[];
+    if(decision==="PASS"){
+      const evidence=(window.prompt(
+        "Evidence refs, comma separated (required for PASS)",
+        ""
+      )||"").trim();
+      evidenceRefs=evidence
+        ?evidence.split(",").map((item)=>item.trim()).filter(Boolean)
+        :[];
+    }else{
+      const evidence=(window.prompt(
+        "Evidence refs, comma separated (optional)",
+        ""
+      )||"").trim();
+      evidenceRefs=evidence
+        ?evidence.split(",").map((item)=>item.trim()).filter(Boolean)
+        :[];
+    }
+
+    const confirmed=window.confirm(
+      "Apply human gate decision '"+decision+"' to "+stage.id+
+      "? This changes tracked project-state and requires a Git commit."
+    );
+    if(!confirmed)return;
+
+    output.textContent="Applying gate decision…";
+    output.className="gateOutput";
+
+    const result=await submitGateDecision(
+      selectedProject,
+      stage.id,
+      {
+        decision,
+        rationale,
+        evidence_refs:evidenceRefs,
+        decided_by:"HUMAN_LOCAL_OPERATOR",
+        expected_etag:evaluation.state_etag||""
+      }
+    );
+
+    if(result.status!=="APPLIED"){
+      output.textContent=
+        (result.status||"BLOCKED")+" · "+
+        (result.errors||["UNKNOWN_ERROR"]).join(", ");
+      output.className="gateOutput block";
+      return;
+    }
+
+    const project=projectById(selectedProject);
+    await loadStageState(project);
+    await loadRuntimeHistory(project);
+    renderWorkspace();
+    output.textContent=
+      "APPLIED · "+decision+
+      " · evidence "+(result.evidence?.evidence_id||"—")+
+      " · tracked state changed · Git commit required";
+    output.className="gateOutput ok";
+  };
 }
 
 function documentsHtml(stage){
