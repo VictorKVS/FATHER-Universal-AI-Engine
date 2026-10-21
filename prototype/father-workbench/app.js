@@ -6,7 +6,8 @@ let model={
   registry:fallbackRegistry,
   providers:fallbackProviders,
   git:fallbackGit,
-  stageStates:{}
+  stageStates:{},
+  liveStates:{}
 };
 let selectedProject=null;
 let selectedStage=null;
@@ -60,6 +61,22 @@ function stageById(projectId,stageId){
   return state?.stages?.find((item)=>item.id===stageId)||null;
 }
 
+async function loadLiveState(project){
+  if(!project)return null;
+  try{
+    const response=await fetch(
+      "/api/projects/"+encodeURIComponent(project.project_id)+"/dev-platform/live",
+      {cache:"no-store"}
+    );
+    if(!response.ok)return null;
+    const payload=await response.json();
+    model.liveStates[project.project_id]=payload.live||null;
+    return payload.live||null;
+  }catch(_error){
+    return null;
+  }
+}
+
 async function loadStageState(project){
   if(!project)return null;
   const ref=project.stage_state_ref;
@@ -96,6 +113,10 @@ async function load(){
     selectedStage=stageState(selectedProject)?.current_stage||null;
   }
 
+  if(selectedProject){
+    await loadLiveState(projectById(selectedProject));
+  }
+
   byId("snapshot").textContent=
     model.git.snapshot_kind==="POINT_IN_TIME"
       ?"Dev Platform snapshot"
@@ -120,7 +141,7 @@ function renderProjects(){
   host.innerHTML="";
 
   for(const project of model.registry.projects||[]){
-    const branch=branchState(project);
+    const branch=effectiveBranchState(project);
     const state=stageState(project.project_id);
     const card=document.createElement("article");
     card.className="project"+(project.project_id===selectedProject?" selected":"");
@@ -136,10 +157,11 @@ function renderProjects(){
         mini("Dev Platform",branch?.relation_to_main||project.dev_platform?.provider_status||"NO SNAPSHOT")+
       '</div>';
 
-    card.onclick=()=>{
+    card.onclick=async()=>{
       selectedProject=project.project_id;
       selectedStage=state?.current_stage||state?.stages?.[0]?.id||null;
       activeTab="overview";
+      await loadLiveState(project);
       render();
     };
     host.appendChild(card);
@@ -170,6 +192,22 @@ function renderWorkspace(){
   renderDevPlatformPanel(project,branch);
   renderScmActions(project,state,branch);
   renderChecks(state);
+}
+
+function effectiveBranchState(project){
+  const live=model.liveStates[project?.project_id];
+  if(live?.branch && live?.compare){
+    return{
+      branch:live.branch.name,
+      head_sha:live.branch.head_sha,
+      relation_to_main:String(live.compare.status||"LIVE").toUpperCase(),
+      ahead_by:live.compare.ahead_by,
+      behind_by:live.compare.behind_by,
+      open_pull_request:(live.change_requests||[]).length>0,
+      live:true
+    };
+  }
+  return branchState(project);
 }
 
 function renderKpis(project,state,branch){
@@ -327,6 +365,24 @@ function renderDevPlatformPanel(project,branch){
   const dev=project.dev_platform||{};
   const provider=providerById(dev.primary_provider||"github");
   const providerName=provider?.name||dev.primary_provider||"Provider TBD";
+  const live=model.liveStates[project.project_id];
+  if(live){
+    const latestRun=(live.workflow_runs||[])[0];
+    const head=(live.branch?.head_sha||"").slice(0,8)||"—";
+    byId("gitPanel").innerHTML=
+      '<div class="branch">'+esc(providerName)+' · '+esc(live.branch?.name||project.branch)+'</div>'+
+      '<div class="gitStats">'+
+        '<div><span>HEAD</span><b>'+esc(head)+'</b></div>'+
+        '<div><span>AHEAD</span><b>'+esc(live.compare?.ahead_by??0)+'</b></div>'+
+        '<div><span>BEHIND</span><b>'+esc(live.compare?.behind_by??0)+'</b></div>'+
+      '</div>'+
+      '<div class="warn">'+
+        'LIVE · PR/MR '+(live.change_requests||[]).length+
+        ' · checks '+(live.checks||[]).length+
+        ' · workflow '+esc(latestRun?(latestRun.status+"/"+(latestRun.conclusion||"—")):"none")+
+      '</div>';
+    return;
+  }
   if(!branch){
     byId("gitPanel").innerHTML=
       '<div class="branch">'+esc(providerName)+' · '+esc(project.branch||"No branch")+'</div>'+
@@ -427,7 +483,25 @@ async function planProviderAction(projectId,action){
 }
 
 function renderChecks(state){
-  byId("checks").innerHTML=(state.checks||[]).map((item)=>
+  const live=model.liveStates[selectedProject];
+  const workflow=(live?.workflow_runs||[])[0];
+  const liveRows=[];
+  if(workflow){
+    liveRows.push({
+      name:"Latest provider workflow",
+      status:workflow.status==="completed" && workflow.conclusion==="success"?"PASS":
+        (workflow.status==="completed"?"FAIL":"RUNNING")
+    });
+  }
+  for(const check of live?.checks||[]){
+    liveRows.push({
+      name:"Provider: "+check.name,
+      status:check.status==="completed" && check.conclusion==="success"?"PASS":
+        (check.status==="completed"?"FAIL":"RUNNING")
+    });
+  }
+  const rows=[...(state.checks||[]),...liveRows];
+  byId("checks").innerHTML=rows.map((item)=>
     '<div class="check"><span>'+esc(item.name)+'</span>'+
     '<span class="pill '+esc(item.status)+'">'+esc(item.status)+'</span></div>'
   ).join("");
@@ -475,5 +549,8 @@ function renderProviderMatrix(){
   }).join("");
 }
 
-byId("refresh").onclick=load;
+byId("refresh").onclick=async()=>{
+  model.liveStates={};
+  await load();
+};
 load();
