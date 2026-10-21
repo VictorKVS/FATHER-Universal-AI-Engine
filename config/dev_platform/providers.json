@@ -50,7 +50,7 @@
       "name": "GitVerse / SberTech",
       "family": "GITVERSE",
       "status": "AVAILABLE",
-      "adapter_status": "IMPLEMENTED_READ_ONLY",
+      "adapter_status": "IMPLEMENTED_READ_WRITE_PARTIAL",
       "capabilities": [
         "REPOSITORIES",
         "CODE_REVIEW",
@@ -58,9 +58,12 @@
         "CI_CD",
         "ARTIFACTS"
       ],
-      "write_capabilities": [],
+      "write_capabilities": [
+        "SCM.CREATE_BRANCH"
+      ],
       "draft_change_request_supported": null,
-      "write_discovery_status": "VERIFIED_ENDPOINTS_REQUIRE_REQUEST_SCHEMA_CONFIRMATION"
+      "write_discovery_status": "PR_CREATE_ENDPOINT_VERIFIED_REQUEST_SCHEMA_PENDING",
+      "branch_create_status": "VERIFIED_PUBLIC_API"
     },
     {
       "id": "sourcecraft",

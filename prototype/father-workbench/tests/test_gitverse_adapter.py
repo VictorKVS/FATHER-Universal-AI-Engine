@@ -22,6 +22,46 @@ class GitVerseAdapterTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             GitVerseAdapter.split_repository("repo")
 
+    def test_create_branch_requires_write_credential(self) -> None:
+        adapter = GitVerseAdapter(token="")
+        with self.assertRaises(ProviderError):
+            adapter.create_branch("org/repo", "feature/new", "main")
+
+    def test_create_branch_reconciles_provider_state(self) -> None:
+        adapter = GitVerseAdapter(token="token")
+        captured = {}
+
+        def fake_mutate(method, path, payload):
+            captured["payload"] = payload
+            return {
+                "ref": "refs/heads/feature/new",
+                "object": {"sha": "base123"},
+            }
+
+        def fake_request(path: str, query=None):
+            if path.endswith("/branches/main"):
+                return {"name": "main", "commit": {"sha": "base123"}}
+            if path.endswith("/branches/feature%2Fnew"):
+                return {"name": "feature/new", "commit": {"sha": "base123"}}
+            raise AssertionError(path)
+
+        with (
+            patch.object(adapter, "_mutate", side_effect=fake_mutate),
+            patch.object(adapter, "_request", side_effect=fake_request),
+        ):
+            result = adapter.create_branch(
+                "org/repo",
+                "feature/new",
+                "main",
+            )
+
+        self.assertTrue(result["reconciled"])
+        self.assertEqual(result["head_sha"], "base123")
+        self.assertEqual(
+            captured["payload"],
+            {"ref": "refs/heads/feature/new", "sha": "base123"},
+        )
+
     def test_live_state_is_normalized(self) -> None:
         adapter = GitVerseAdapter(token="not-used")
 
