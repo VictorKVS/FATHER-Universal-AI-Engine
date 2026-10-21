@@ -1,0 +1,141 @@
+{
+  "schema_version": "father.dev_platform.providers.v0.1",
+  "environment_id": "FATHER-DEV-PLATFORM-001",
+  "providers": [
+    {
+      "id": "github",
+      "name": "GitHub",
+      "family": "GITHUB",
+      "status": "CONNECTED",
+      "adapter_status": "AVAILABLE",
+      "capabilities": [
+        "REPOSITORIES",
+        "BRANCHES",
+        "COMMITS",
+        "PULL_REQUESTS",
+        "ISSUES",
+        "REVIEWS",
+        "CHECKS",
+        "RELEASES"
+      ]
+    },
+    {
+      "id": "gitlab",
+      "name": "GitLab",
+      "family": "GITLAB",
+      "status": "AVAILABLE",
+      "adapter_status": "PLANNED",
+      "capabilities": [
+        "REPOSITORIES",
+        "BRANCHES",
+        "COMMITS",
+        "MERGE_REQUESTS",
+        "ISSUES",
+        "PIPELINES",
+        "PACKAGES"
+      ]
+    },
+    {
+      "id": "gitverse",
+      "name": "GitVerse / SberTech",
+      "family": "GITVERSE",
+      "status": "AVAILABLE",
+      "adapter_status": "PLANNED",
+      "capabilities": [
+        "REPOSITORIES",
+        "CODE_REVIEW",
+        "TRACKER",
+        "CI_CD",
+        "ARTIFACTS"
+      ]
+    },
+    {
+      "id": "sourcecraft",
+      "name": "SourceCraft / Yandex",
+      "family": "SOURCECRAFT",
+      "status": "AVAILABLE",
+      "adapter_status": "PLANNED",
+      "capabilities": [
+        "REPOSITORIES",
+        "PULL_REQUESTS",
+        "ISSUES",
+        "CI_CD",
+        "PACKAGES",
+        "MIRRORING"
+      ]
+    },
+    {
+      "id": "gitflic",
+      "name": "GitFlic",
+      "family": "GITFLIC",
+      "status": "AVAILABLE",
+      "adapter_status": "PLANNED",
+      "capabilities": [
+        "REPOSITORIES",
+        "CODE_REVIEW",
+        "ISSUES",
+        "CI_CD"
+      ]
+    },
+    {
+      "id": "azure_devops",
+      "name": "Azure DevOps",
+      "family": "AZURE_DEVOPS",
+      "status": "AVAILABLE",
+      "adapter_status": "PLANNED",
+      "capabilities": [
+        "REPOS",
+        "PULL_REQUESTS",
+        "WORK_ITEMS",
+        "PIPELINES",
+        "ARTIFACTS"
+      ]
+    },
+    {
+      "id": "bitbucket",
+      "name": "Bitbucket",
+      "family": "BITBUCKET",
+      "status": "AVAILABLE",
+      "adapter_status": "PLANNED",
+      "capabilities": [
+        "REPOSITORIES",
+        "PULL_REQUESTS",
+        "PIPELINES",
+        "ISSUES"
+      ]
+    },
+    {
+      "id": "forgejo",
+      "name": "Forgejo",
+      "family": "FORGEJO",
+      "status": "AVAILABLE",
+      "adapter_status": "PLANNED",
+      "capabilities": [
+        "REPOSITORIES",
+        "PULL_REQUESTS",
+        "ISSUES",
+        "ACTIONS"
+      ]
+    },
+    {
+      "id": "gitea",
+      "name": "Gitea",
+      "family": "GITEA",
+      "status": "AVAILABLE",
+      "adapter_status": "PLANNED",
+      "capabilities": [
+        "REPOSITORIES",
+        "PULL_REQUESTS",
+        "ISSUES",
+        "ACTIONS"
+      ]
+    }
+  ],
+  "rules": {
+    "one_primary_provider_per_project": true,
+    "mirrors_allowed": true,
+    "provider_switch_preserves_project_identity": true,
+    "migration_requires_evidence": true,
+    "credentials_in_browser": false
+  }
+}

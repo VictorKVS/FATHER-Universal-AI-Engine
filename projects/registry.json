@@ -34,6 +34,20 @@
         "behind_by": 3,
         "open_pull_request": false,
         "snapshot_ref": "docs/git/current_workspace.snapshot.json"
+      },
+      "dev_platform": {
+        "primary_provider": "github",
+        "provider_status": "CONNECTED",
+        "repository": "VictorKVS/FATHER-Universal-AI-Engine",
+        "branch": "feature/alina-osint-academy-v01",
+        "mirrors": [],
+        "migration_targets": [
+          "gitlab",
+          "gitverse",
+          "sourcecraft",
+          "gitflic"
+        ],
+        "provider_registry_ref": "config/dev_platform/providers.json"
       }
     },
     {
@@ -64,6 +78,20 @@
       "git_workspace": {
         "relation_to_default": "EXTERNAL_REPOSITORY_NOT_REFRESHED_IN_THIS_SNAPSHOT",
         "snapshot_ref": null
+      },
+      "dev_platform": {
+        "primary_provider": "github",
+        "provider_status": "EXTERNAL_REPOSITORY",
+        "repository": "VictorKVS/OTUS-",
+        "branch": "feature/father-ecosystem-workspace-v03",
+        "mirrors": [],
+        "migration_targets": [
+          "gitlab",
+          "gitverse",
+          "sourcecraft",
+          "gitflic"
+        ],
+        "provider_registry_ref": "config/dev_platform/providers.json"
       }
     }
   ]
