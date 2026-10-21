@@ -13,6 +13,7 @@ let model={
   manufacturingEvents:{},
   traceability:{},
   devsecopsStates:{},
+  evidencePacks:{},
   migrationPlans:{}
 };
 let selectedProject=null;
@@ -95,10 +96,15 @@ async function loadRuntimeHistory(project){
     ["/api/projects/"+projectId+"/devsecops/current"],
     null
   );
+  const packs=await readFirst(
+    ["/api/projects/"+projectId+"/evidence-packs"],
+    {packs:[]}
+  );
   model.evidenceStates[project.project_id]=evidence.evidence||[];
   model.manufacturingEvents[project.project_id]=events.events||[];
   model.traceability[project.project_id]=traceability;
   model.devsecopsStates[project.project_id]=devsecops?.devsecops||null;
+  model.evidencePacks[project.project_id]=packs.packs||[];
 }
 
 async function loadLiveState(project){
@@ -265,7 +271,8 @@ function renderKpis(project,state,branch){
     ["Documents",docs.done+" / "+docs.total,"project projection"],
     ["Evidence",
       String((model.evidenceStates[project.project_id]||[]).length),
-      state.evidence_status||"no evidence → no pass"],
+      (model.evidencePacks[project.project_id]||[]).length+
+        " durable pack(s) · "+(state.evidence_status||"no evidence → no pass")],
     ["SCM",branch?.relation_to_main||project.dev_platform?.provider_status||"—",
       branch?("+"+(branch.ahead_by||0)+" / -"+(branch.behind_by||0)):"provider state"]
   ];
@@ -988,6 +995,58 @@ async function planMigration(projectId,targetProvider){
   }
 }
 
+async function exportEvidencePack(projectId){
+  try{
+    const response=await fetch("/api/evidence/export",{
+      method:"POST",
+      headers:{
+        "Content-Type":"application/json",
+        "X-FATHER-Action":"confirm"
+      },
+      body:JSON.stringify({
+        project_id:projectId,
+        confirm:true
+      })
+    });
+    const body=await response.json().catch(()=>({}));
+    return{http_status:response.status,...body};
+  }catch(_error){
+    return{
+      status:"BLOCKED",
+      errors:["CONTROL_PLANE_API_UNAVAILABLE"]
+    };
+  }
+}
+
+async function handleEvidencePackExport(){
+  const project=projectById(selectedProject);
+  if(!project)return;
+  const devsec=model.devsecopsStates[selectedProject];
+  const confirmed=window.confirm(
+    "Export immutable Evidence Pack for "+project.project_id+
+    "? Current commit-bound DevSecOps state: "+(devsec?.status||"UNKNOWN")+
+    ". The pack will be created in the tracked project tree and require a Git commit."
+  );
+  if(!confirmed)return;
+
+  const result=await exportEvidencePack(project.project_id);
+  if(result.status!=="EXPORTED"){
+    window.alert(
+      (result.status||"BLOCKED")+": "+
+      (result.errors||["UNKNOWN_ERROR"]).join(", ")
+    );
+    return;
+  }
+  await loadRuntimeHistory(project);
+  renderWorkspace();
+  window.alert(
+    result.pack.evidence_pack_id+
+    " · "+result.pack.pack_status+
+    " · "+result.export.path+
+    " · Git commit required"
+  );
+}
+
 async function executeProviderAction(projectId,action,params){
   try{
     const response=await fetch("/api/actions/execute",{
@@ -1144,12 +1203,14 @@ function renderProviderMatrix(){
   });
 }
 
+byId("evidencePackBtn").onclick=handleEvidencePackExport;
 byId("refresh").onclick=async()=>{
   model.liveStates={};
   model.evidenceStates={};
   model.manufacturingEvents={};
   model.traceability={};
   model.devsecopsStates={};
+  model.evidencePacks={};
   model.migrationPlans={};
   await load();
 };
