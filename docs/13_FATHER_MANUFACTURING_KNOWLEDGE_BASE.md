@@ -453,3 +453,16 @@ APPROVED PROJECT MEMORY
 ```
 
 The summary never replaces original evidence or rejected alternatives.
+
+
+---
+
+# GitHub Evidence / Production Protocol
+
+GitHub is an evidence/protocol source for production history.
+
+Small and reviewable artifacts may be committed directly. Large, sensitive or restricted artifacts are represented by a verified manifest containing identity, hash, location, classification and links to the relevant stage/test/gate.
+
+See `docs/16_FATHER_GITHUB_EVIDENCE_PROTOCOL.md`.
+
+Security and DevSecOps status must never be inferred as PASS from missing evidence.
