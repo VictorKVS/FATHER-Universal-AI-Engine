@@ -47,6 +47,10 @@ from migration_security_review_store import (
     MigrationReviewConflictError,
     MigrationSecurityReviewStore,
 )
+from migration_cutover_store import (
+    CutoverConflictError,
+    MigrationCutoverStore,
+)
 from state_store import ProjectStateStore, StateConflictError
 from traceability_engine import build_traceability_graph
 from providers.base import ProviderError
@@ -80,6 +84,7 @@ PROJECT_STATE_STORE = ProjectStateStore(REPO_ROOT)
 DOCUMENT_STORE = DocumentStore(REPO_ROOT)
 PROVIDER_BINDING_STORE = ProviderBindingStore(REPO_ROOT)
 MIGRATION_SECURITY_REVIEW_STORE = MigrationSecurityReviewStore(REPO_ROOT)
+MIGRATION_CUTOVER_STORE = MigrationCutoverStore(REPO_ROOT)
 
 MAX_JSON_BODY = 16 * 1024
 
@@ -717,6 +722,189 @@ def review_migration_security(
             ["CUTOVER_APPROVAL_REQUIRED"]
             if decision == "APPROVE"
             else ["MIGRATION_SECURITY_REVIEW_NOT_APPROVED"]
+        ),
+    }
+
+
+def migration_cutover_approvals(project_id: str) -> dict[str, Any]:
+    project = project_by_id(project_id)
+    if not project:
+        return {
+            "status": "BLOCKED",
+            "errors": ["PROJECT_NOT_FOUND"],
+        }
+    state, etag = MIGRATION_CUTOVER_STORE.read(project_id)
+    return {
+        "status": "OK",
+        "project_id": project_id,
+        "etag": etag,
+        "approvals": state.get("approvals", []),
+    }
+
+
+def current_verification_refs(
+    verification: dict[str, Any],
+) -> dict[str, str]:
+    evidence = verification.get("evidence") or {}
+    return {
+        "branch": (
+            (evidence.get("branch") or {}).get("evidence_id")
+            or ""
+        ),
+        "refs": (
+            (evidence.get("refs") or {}).get("evidence_id")
+            or ""
+        ),
+        "access": (
+            (evidence.get("access_policy") or {}).get("evidence_id")
+            or ""
+        ),
+        "verification_id": (
+            (verification.get("verification") or {}).get("verification_id")
+            or ""
+        ),
+        "ref_parity_report_id": (
+            (verification.get("ref_parity") or {}).get("report_id")
+            or ""
+        ),
+        "access_policy_report_id": (
+            (verification.get("access_policy") or {}).get("report_id")
+            or ""
+        ),
+    }
+
+
+def review_migration_cutover(
+    project_id: str,
+    target_provider: str,
+    decision: str,
+    rationale: str,
+    approved_by: str,
+    expected_etag: str,
+) -> dict[str, Any]:
+    project = project_by_id(project_id)
+    if not project:
+        return {
+            "status": "BLOCKED",
+            "errors": ["PROJECT_NOT_FOUND"],
+        }
+
+    decision = decision.strip().upper()
+    latest_security = MIGRATION_SECURITY_REVIEW_STORE.latest_for_target(
+        project_id,
+        target_provider,
+    )
+    verification_refs: dict[str, str] = {}
+    verification: dict[str, Any] | None = None
+    security_review_id = ""
+
+    if decision == "APPROVE":
+        if not latest_security or latest_security.get("decision") != "APPROVE":
+            return {
+                "status": "BLOCKED",
+                "errors": ["MIGRATION_SECURITY_REVIEW_NOT_APPROVED"],
+            }
+
+        verification = verify_migration_target(project_id, target_provider)
+        if verification.get("status") != "PASS":
+            return {
+                "status": "BLOCKED",
+                "errors": ["CURRENT_MIGRATION_EVIDENCE_NOT_PASS"],
+                "verification": verification,
+            }
+
+        verification_refs = current_verification_refs(verification)
+        security_refs = latest_security.get("verification_refs") or {}
+        compared_keys = (
+            "branch",
+            "refs",
+            "access",
+            "verification_id",
+            "ref_parity_report_id",
+            "access_policy_report_id",
+        )
+        if any(
+            str(security_refs.get(key) or "")
+            != str(verification_refs.get(key) or "")
+            for key in compared_keys
+        ):
+            return {
+                "status": "BLOCKED",
+                "errors": ["MIGRATION_SECURITY_REVIEW_STALE"],
+                "security_review_id": latest_security.get("review_id"),
+                "verification": verification,
+            }
+        security_review_id = str(latest_security.get("review_id") or "")
+
+    try:
+        approval, new_etag = MIGRATION_CUTOVER_STORE.append(
+            project_id=project_id,
+            target_provider=target_provider,
+            decision=decision,
+            rationale=rationale,
+            approved_by=approved_by,
+            security_review_id=security_review_id,
+            verification_refs=verification_refs,
+            expected_etag=expected_etag,
+        )
+    except CutoverConflictError:
+        current, current_etag = MIGRATION_CUTOVER_STORE.read(project_id)
+        return {
+            "status": "CONFLICT",
+            "errors": ["MIGRATION_CUTOVER_ETAG_CONFLICT"],
+            "current_etag": current_etag,
+            "approvals": current.get("approvals", []),
+        }
+    except ValueError as exc:
+        return {
+            "status": "BLOCKED",
+            "errors": [str(exc)],
+        }
+
+    evidence = EVIDENCE_STORE.store_evidence(
+        project_id=project_id,
+        evidence_type="CUTOVER_APPROVAL",
+        provider=target_provider,
+        payload=approval,
+        subject_key=approval["approval_id"],
+        refs={
+            **verification_refs,
+            "security_review_id": security_review_id,
+        },
+    )
+    event_type = {
+        "APPROVE": "MIGRATION_CUTOVER_APPROVED",
+        "HOLD": "MIGRATION_CUTOVER_HELD",
+        "CANCEL": "MIGRATION_CUTOVER_CANCELLED",
+    }[decision]
+    event = EVIDENCE_STORE.append_manufacturing_event(
+        project_id=project_id,
+        event_type=event_type,
+        source_ref=approval["approval_id"],
+        payload={
+            "target_provider": target_provider,
+            "decision": decision,
+            "approved_by": approved_by,
+            "security_review_id": security_review_id,
+            "evidence_id": evidence["evidence_id"],
+        },
+    )
+    return {
+        "status": "APPLIED",
+        "project_id": project_id,
+        "target_provider": target_provider,
+        "decision": decision,
+        "approval": approval,
+        "etag": new_etag,
+        "evidence": evidence,
+        "manufacturing_event_id": event["event_id"],
+        "worktree_change": True,
+        "git_commit_required": True,
+        "switch_primary_eligible": decision == "APPROVE",
+        "switch_primary_blockers": (
+            []
+            if decision == "APPROVE"
+            else ["CUTOVER_APPROVAL_NOT_APPROVED"]
         ),
     }
 
@@ -1883,6 +2071,7 @@ class FatherHandler(BaseHTTPRequestHandler):
                         "provider_bindings": True,
                         "migration_parity_verification": True,
                         "migration_security_review": True,
+                        "migration_cutover_approval": True,
                         "gate_engine": True,
                         "commit_bound_devsecops": True,
                         "atomic_project_state": True,
@@ -2000,6 +2189,14 @@ class FatherHandler(BaseHTTPRequestHandler):
                     and parts[4] == "migration-security"
                 ):
                     self._json(migration_security_reviews(project_id))
+                    return
+
+                if (
+                    len(parts) == 5
+                    and parts[3] == "dev-platform"
+                    and parts[4] == "cutover"
+                ):
+                    self._json(migration_cutover_approvals(project_id))
                     return
 
                 if len(parts) == 4 and parts[3] == "stages":
@@ -2133,6 +2330,7 @@ class FatherHandler(BaseHTTPRequestHandler):
             "/api/migrations/bind",
             "/api/migrations/verify",
             "/api/migrations/security-review",
+            "/api/migrations/cutover-review",
             "/api/gates/recalculate",
             "/api/gates/decide",
             "/api/artifacts/upsert",
@@ -2527,6 +2725,54 @@ class FatherHandler(BaseHTTPRequestHandler):
                 target_provider,
             )
             if result["status"] == "BLOCKED":
+                self._json(result, HTTPStatus.BAD_REQUEST)
+            else:
+                self._json(result)
+            return
+
+        if path == "/api/migrations/cutover-review":
+            if self.headers.get("X-FATHER-Action") != "confirm":
+                self._error_json(
+                    HTTPStatus.FORBIDDEN,
+                    "EXPLICIT_ACTION_HEADER_REQUIRED",
+                )
+                return
+            if body.get("confirm") is not True:
+                self._error_json(
+                    HTTPStatus.FORBIDDEN,
+                    "EXPLICIT_CONFIRMATION_REQUIRED",
+                )
+                return
+            target_provider = str(body.get("target_provider", "")).strip()
+            decision = str(body.get("decision", "")).strip()
+            rationale = str(body.get("rationale", "")).strip()
+            approved_by = str(body.get("approved_by", "")).strip()
+            expected_etag = str(body.get("expected_etag", "")).strip()
+            if not all(
+                (
+                    target_provider,
+                    decision,
+                    rationale,
+                    approved_by,
+                    expected_etag,
+                )
+            ):
+                self._error_json(
+                    HTTPStatus.BAD_REQUEST,
+                    "INVALID_CUTOVER_REVIEW_REQUEST",
+                )
+                return
+            result = review_migration_cutover(
+                project_id,
+                target_provider,
+                decision,
+                rationale,
+                approved_by,
+                expected_etag,
+            )
+            if result["status"] == "CONFLICT":
+                self._json(result, HTTPStatus.CONFLICT)
+            elif result["status"] == "BLOCKED":
                 self._json(result, HTTPStatus.BAD_REQUEST)
             else:
                 self._json(result)
