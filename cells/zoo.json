@@ -13,6 +13,12 @@
       "name": "One Agent + Two LLMs — Primary/Fallback",
       "runtime_ref": "cells/CELL-002.json",
       "status": "IMPLEMENTED_PROTOTYPE"
+    },
+    {
+      "cell_id": "CELL-003",
+      "name": "One Agent + Two LLMs — Fan-out Compare",
+      "runtime_ref": "cells/CELL-003.json",
+      "status": "IMPLEMENTED_PROTOTYPE"
     }
   ]
 }

@@ -1,0 +1,17 @@
+{
+  "schema_version": "father.model.runtime.v0.1",
+  "model_id": "FATHER-MODEL-DETERMINISTIC-B-TEST-001",
+  "name": "Deterministic Contract Test Model B",
+  "kind": "TEST_DOUBLE",
+  "provider_type": "deterministic_test",
+  "status": "TEST_ONLY",
+  "response_prefix": "DETERMINISTIC_B_RESULT: ",
+  "capabilities": [
+    "text_generation",
+    "contract_testing"
+  ],
+  "runtime_policy": {
+    "external_network": false,
+    "production_eligible": false
+  }
+}

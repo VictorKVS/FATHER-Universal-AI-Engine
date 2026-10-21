@@ -22,9 +22,13 @@ class DeterministicTestAdapter(ModelAdapter):
             if item.get("role") == "user"
         ]
         content = user_messages[-1] if user_messages else ""
+        prefix = str(
+            model_spec.get("response_prefix")
+            or "DETERMINISTIC_RESULT: "
+        )
         return ModelResponse(
             model_id=request.model_id,
-            content=f"DETERMINISTIC_RESULT: {content}",
+            content=f"{prefix}{content}",
             provider_response_id="LOCAL-TEST",
             usage={"input_messages": len(request.messages)},
             metadata={

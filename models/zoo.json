@@ -42,6 +42,14 @@
       "status": "TEST_ONLY",
       "runtime_ref": "models/failing_test/model.runtime.json",
       "production_candidate": false
+    },
+    {
+      "model_id": "FATHER-MODEL-DETERMINISTIC-B-TEST-001",
+      "name": "Deterministic Contract Test Model B",
+      "kind": "TEST_DOUBLE",
+      "status": "TEST_ONLY",
+      "runtime_ref": "models/deterministic_test_b/model.runtime.json",
+      "production_candidate": false
     }
   ]
 }

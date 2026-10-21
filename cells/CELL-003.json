@@ -1,0 +1,25 @@
+{
+  "schema_version": "father.factory_cell.v0.1",
+  "cell_id": "CELL-003",
+  "name": "One Agent + Two LLMs — Fan-out Compare",
+  "status": "IMPLEMENTED_PROTOTYPE",
+  "mode": "FAN_OUT_COMPARE",
+  "agent_id": "FATHER-MINIMAL-AGENT-001",
+  "model_ids": [
+    "FATHER-LLM-SLOT-A-001",
+    "FATHER-LLM-SLOT-B-001"
+  ],
+  "test_model_ids": [
+    "FATHER-MODEL-DETERMINISTIC-TEST-001",
+    "FATHER-MODEL-DETERMINISTIC-B-TEST-001"
+  ],
+  "processor": "FATHER_UNIVERSAL_PROCESSOR_V0_1",
+  "comparison_contract": "SEMANTIC_INPUT_AND_OUTPUT_HASHES",
+  "input_contract": "MessageEnvelope",
+  "output_contract": "ComparisonResult",
+  "evidence_required": true,
+  "next_modes": [
+    "JUDGE_SELECT",
+    "POLICY_ROUTER"
+  ]
+}
