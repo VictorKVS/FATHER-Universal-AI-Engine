@@ -231,6 +231,24 @@ def provider_adapter(provider: str):
     raise NotImplementedError(f"Provider adapter not implemented: {provider}")
 
 
+def active_provider_binding(project: dict[str, Any]) -> dict[str, Any]:
+    state, _etag = PROVIDER_BINDING_STORE.read(project)
+    primary = dict(state.get("primary") or {})
+    if all(
+        str(primary.get(key) or "").strip()
+        for key in ("provider", "repository", "branch")
+    ):
+        return primary
+
+    dev_platform = project.get("dev_platform") or {}
+    return {
+        "provider": dev_platform.get("primary_provider"),
+        "repository": dev_platform.get("repository") or project.get("repository"),
+        "branch": dev_platform.get("branch") or project.get("branch"),
+        "status": "REGISTRY_FALLBACK",
+    }
+
+
 def live_binding_state(
     provider: str,
     repository: str,
@@ -241,18 +259,14 @@ def live_binding_state(
 
 
 def live_provider_state(project: dict[str, Any]) -> dict[str, Any]:
-    dev_platform = project.get("dev_platform") or {}
-    provider = str(dev_platform.get("primary_provider") or "")
-    repository = dev_platform.get("repository") or project.get("repository")
-    branch = dev_platform.get("branch") or project.get("branch")
-    if not repository or not branch:
-        raise ValueError("Project has no repository/branch binding")
+    active = active_provider_binding(project)
+    provider = str(active.get("provider") or "")
+    repository = str(active.get("repository") or "")
+    branch = str(active.get("branch") or "")
+    if not provider or not repository or not branch:
+        raise ValueError("Project has no active provider binding")
 
-    return live_binding_state(
-        provider,
-        str(repository),
-        str(branch),
-    )
+    return live_binding_state(provider, repository, branch)
 
 
 def provider_bindings(project_id: str) -> dict[str, Any]:
@@ -906,6 +920,203 @@ def review_migration_cutover(
             if decision == "APPROVE"
             else ["CUTOVER_APPROVAL_NOT_APPROVED"]
         ),
+    }
+
+
+def switch_primary_provider(
+    project_id: str,
+    target_provider: str,
+    expected_binding_etag: str,
+) -> dict[str, Any]:
+    project = project_by_id(project_id)
+    if not project:
+        return {
+            "status": "BLOCKED",
+            "errors": ["PROJECT_NOT_FOUND"],
+        }
+
+    latest_cutover = MIGRATION_CUTOVER_STORE.latest_for_target(
+        project_id,
+        target_provider,
+    )
+    if not latest_cutover or latest_cutover.get("decision") != "APPROVE":
+        return {
+            "status": "BLOCKED",
+            "errors": ["CUTOVER_APPROVAL_NOT_APPROVED"],
+        }
+
+    latest_security = MIGRATION_SECURITY_REVIEW_STORE.latest_for_target(
+        project_id,
+        target_provider,
+    )
+    if (
+        not latest_security
+        or latest_security.get("decision") != "APPROVE"
+        or str(latest_security.get("review_id") or "")
+        != str(latest_cutover.get("security_review_id") or "")
+    ):
+        return {
+            "status": "BLOCKED",
+            "errors": ["MIGRATION_SECURITY_REVIEW_NOT_CURRENT"],
+        }
+
+    verification = verify_migration_target(project_id, target_provider)
+    if verification.get("status") != "PASS":
+        return {
+            "status": "BLOCKED",
+            "errors": ["CURRENT_MIGRATION_EVIDENCE_NOT_PASS"],
+            "verification": verification,
+        }
+
+    current_refs = current_verification_refs(verification)
+    approved_refs = latest_cutover.get("verification_refs") or {}
+    compared_keys = (
+        "branch",
+        "refs",
+        "access",
+        "verification_id",
+        "ref_parity_report_id",
+        "access_policy_report_id",
+    )
+    if any(
+        str(current_refs.get(key) or "")
+        != str(approved_refs.get(key) or "")
+        for key in compared_keys
+    ):
+        return {
+            "status": "BLOCKED",
+            "errors": ["CUTOVER_APPROVAL_STALE"],
+            "approval_id": latest_cutover.get("approval_id"),
+            "verification": verification,
+        }
+
+    bindings, current_etag = PROVIDER_BINDING_STORE.read(project)
+    if current_etag != expected_binding_etag:
+        return {
+            "status": "CONFLICT",
+            "errors": ["BINDING_ETAG_CONFLICT"],
+            "current_etag": current_etag,
+            "bindings": bindings,
+        }
+
+    before = dict(bindings.get("primary") or {})
+    action_id = f"ACT-{uuid.uuid4().hex[:12].upper()}"
+    started = {
+        "action_id": action_id,
+        "project_id": project_id,
+        "action": "PROVIDER.SWITCH_PRIMARY",
+        "status": "EXECUTING",
+        "target_provider": target_provider,
+        "approval_id": latest_cutover.get("approval_id"),
+        "requested_at": datetime.now(timezone.utc).isoformat(),
+    }
+    write_audit_event(started)
+    EVIDENCE_STORE.append_manufacturing_event(
+        project_id=project_id,
+        event_type="PROVIDER_PRIMARY_SWITCH_STARTED",
+        source_ref=action_id,
+        payload=started,
+    )
+
+    try:
+        state, new_etag, historical = PROVIDER_BINDING_STORE.switch_primary(
+            project,
+            target_provider=target_provider,
+            expected_etag=current_etag,
+            approval_id=str(latest_cutover.get("approval_id") or ""),
+            verification_refs=current_refs,
+        )
+    except BindingConflictError:
+        latest_state, latest_etag = PROVIDER_BINDING_STORE.read(project)
+        return {
+            "status": "CONFLICT",
+            "errors": ["BINDING_ETAG_CONFLICT"],
+            "current_etag": latest_etag,
+            "bindings": latest_state,
+        }
+    except ValueError as exc:
+        return {
+            "status": "BLOCKED",
+            "errors": [str(exc)],
+        }
+
+    after = dict(state.get("primary") or {})
+    payload = {
+        "action_id": action_id,
+        "project_id": project_id,
+        "action": "PROVIDER.SWITCH_PRIMARY",
+        "status": "SUCCEEDED",
+        "previous_primary": before,
+        "new_primary": after,
+        "historical_binding": historical,
+        "approval_id": latest_cutover.get("approval_id"),
+        "security_review_id": latest_cutover.get("security_review_id"),
+        "verification_refs": current_refs,
+        "binding_etag": new_etag,
+        "finished_at": datetime.now(timezone.utc).isoformat(),
+    }
+    write_audit_event(payload)
+
+    event = EVIDENCE_STORE.append_manufacturing_event(
+        project_id=project_id,
+        event_type="PROVIDER_PRIMARY_SWITCHED",
+        source_ref=action_id,
+        payload=payload,
+    )
+    evidence = EVIDENCE_STORE.store_evidence(
+        project_id=project_id,
+        evidence_type="PROVIDER_PRIMARY_SWITCH",
+        provider=target_provider,
+        payload=payload,
+        subject_key=action_id,
+        refs={
+            "cutover_approval_id": str(
+                latest_cutover.get("approval_id") or ""
+            ),
+            "security_review_id": str(
+                latest_cutover.get("security_review_id") or ""
+            ),
+            "manufacturing_event_id": event["event_id"],
+            **current_refs,
+        },
+    )
+
+    post_cutover_status = "CAPTURED"
+    post_cutover_evidence = None
+    try:
+        live = live_binding_state(
+            str(after.get("provider") or ""),
+            str(after.get("repository") or ""),
+            str(after.get("branch") or ""),
+        )
+        post_cutover_evidence = capture_live_provider_evidence(
+            project,
+            live,
+            source_ref=action_id,
+        )
+    except (ProviderError, OSError, ValueError, NotImplementedError):
+        post_cutover_status = "FAILED"
+
+    return {
+        "status": (
+            "APPLIED"
+            if post_cutover_status == "CAPTURED"
+            else "APPLIED_POST_CUTOVER_EVIDENCE_DEGRADED"
+        ),
+        "project_id": project_id,
+        "action_id": action_id,
+        "previous_primary": before,
+        "primary": after,
+        "binding_etag": new_etag,
+        "cutover_approval_id": latest_cutover.get("approval_id"),
+        "evidence": evidence,
+        "post_cutover_evidence": post_cutover_evidence,
+        "post_cutover_status": post_cutover_status,
+        "manufacturing_event_id": event["event_id"],
+        "provider_mutation": False,
+        "worktree_change": True,
+        "git_commit_required": True,
+        "rollback_binding_preserved": True,
     }
 
 
@@ -1728,8 +1939,8 @@ def execute_action(
             "reasons": ["PROJECT_NOT_FOUND"],
         }
 
-    dev_platform = project.get("dev_platform") or {}
-    provider = str(dev_platform.get("primary_provider") or "")
+    active = active_provider_binding(project)
+    provider = str(active.get("provider") or "")
     try:
         adapter = provider_adapter(provider)
     except NotImplementedError:
@@ -1755,11 +1966,7 @@ def execute_action(
             "reasons": ["PROVIDER_WRITE_CREDENTIAL_UNAVAILABLE"],
         }
 
-    repository = str(
-        dev_platform.get("repository")
-        or project.get("repository")
-        or ""
-    ).strip()
+    repository = str(active.get("repository") or "").strip()
     if not repository:
         return {
             **plan,
@@ -1772,8 +1979,7 @@ def execute_action(
         branch_name = str(params.get("branch_name", "")).strip()
         base_ref = str(
             params.get("base_ref")
-            or dev_platform.get("branch")
-            or project.get("branch")
+            or active.get("branch")
             or ""
         ).strip()
         if not branch_name or not base_ref:
@@ -1792,8 +1998,7 @@ def execute_action(
         title = str(params.get("title", "")).strip()
         head_ref = str(
             params.get("head_ref")
-            or dev_platform.get("branch")
-            or project.get("branch")
+            or active.get("branch")
             or ""
         ).strip()
         base_ref = str(params.get("base_ref", "")).strip()
@@ -1990,8 +2195,8 @@ def plan_action(project_id: str, action: str) -> dict[str, Any]:
     if action == "SCM.DELETE_BRANCH":
         reasons.append("EXPLICIT_DELETE_APPROVAL_REQUIRED")
 
-    dev_platform = project.get("dev_platform") or {}
-    provider = str(dev_platform.get("primary_provider") or "")
+    active = active_provider_binding(project)
+    provider = str(active.get("provider") or "")
     executable_actions = {"SCM.CREATE_BRANCH", "SCM.OPEN_CHANGE_REQUEST"}
 
     if action in executable_actions:
@@ -2070,6 +2275,7 @@ class FatherHandler(BaseHTTPRequestHandler):
                         "manufacturing_events": True,
                         "provider_bindings": True,
                         "migration_parity_verification": True,
+                        "provider_primary_switch": "CUTOVER_GATED",
                         "migration_security_review": True,
                         "migration_cutover_approval": True,
                         "gate_engine": True,
@@ -2331,6 +2537,7 @@ class FatherHandler(BaseHTTPRequestHandler):
             "/api/migrations/verify",
             "/api/migrations/security-review",
             "/api/migrations/cutover-review",
+            "/api/migrations/switch-primary",
             "/api/gates/recalculate",
             "/api/gates/decide",
             "/api/artifacts/upsert",
@@ -2730,6 +2937,53 @@ class FatherHandler(BaseHTTPRequestHandler):
                 self._json(result)
             return
 
+        if path == "/api/migrations/switch-primary":
+            if self.headers.get("X-FATHER-Action") != "confirm":
+                self._error_json(
+                    HTTPStatus.FORBIDDEN,
+                    "EXPLICIT_ACTION_HEADER_REQUIRED",
+                )
+                return
+            if body.get("confirm") is not True:
+                self._error_json(
+                    HTTPStatus.FORBIDDEN,
+                    "EXPLICIT_CONFIRMATION_REQUIRED",
+                )
+                return
+            target_provider = str(body.get("target_provider", "")).strip()
+            expected_etag = str(
+                body.get("expected_binding_etag", "")
+            ).strip()
+            confirmation = str(body.get("confirmation", "")).strip()
+            expected_confirmation = (
+                f"SWITCH_PRIMARY:{project_id}:{target_provider}"
+            )
+            if not target_provider or not expected_etag:
+                self._error_json(
+                    HTTPStatus.BAD_REQUEST,
+                    "INVALID_SWITCH_PRIMARY_REQUEST",
+                )
+                return
+            if confirmation != expected_confirmation:
+                self._error_json(
+                    HTTPStatus.FORBIDDEN,
+                    "SWITCH_PRIMARY_CONFIRMATION_MISMATCH",
+                )
+                return
+
+            result = switch_primary_provider(
+                project_id,
+                target_provider,
+                expected_etag,
+            )
+            if result["status"] == "CONFLICT":
+                self._json(result, HTTPStatus.CONFLICT)
+            elif result["status"] == "BLOCKED":
+                self._json(result, HTTPStatus.BAD_REQUEST)
+            else:
+                self._json(result)
+            return
+
         if path == "/api/migrations/cutover-review":
             if self.headers.get("X-FATHER-Action") != "confirm":
                 self._error_json(
@@ -2838,8 +3092,16 @@ class FatherHandler(BaseHTTPRequestHandler):
             if not project:
                 self._error_json(HTTPStatus.NOT_FOUND, "PROJECT_NOT_FOUND")
                 return
+            active = active_provider_binding(project)
+            plan_project = dict(project)
+            plan_project["dev_platform"] = {
+                **(project.get("dev_platform") or {}),
+                "primary_provider": active.get("provider"),
+                "repository": active.get("repository"),
+                "branch": active.get("branch"),
+            }
             plan = build_migration_plan(
-                project,
+                plan_project,
                 target_provider,
                 read_json(PROVIDERS_FILE),
             )
