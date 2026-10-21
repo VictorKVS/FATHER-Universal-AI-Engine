@@ -101,6 +101,38 @@ class ProviderBindingStoreTests(unittest.TestCase):
                     expected_etag=etag,
                 )
 
+    def test_switch_primary_preserves_previous_binding(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            store = ProviderBindingStore(Path(tmp))
+            _state, etag = store.read(self.project)
+            state, target_etag = store.upsert_target(
+                self.project,
+                provider="gitlab",
+                repository="group/repo",
+                branch="main",
+                expected_etag=etag,
+            )
+            self.assertEqual(state["primary"]["provider"], "github")
+
+            switched, new_etag, historical = store.switch_primary(
+                self.project,
+                target_provider="gitlab",
+                expected_etag=target_etag,
+                approval_id="CUTOVER-1",
+                verification_refs={"refs": "EVD-REF"},
+            )
+
+            self.assertNotEqual(target_etag, new_etag)
+            self.assertEqual(switched["primary"]["provider"], "gitlab")
+            self.assertEqual(switched["primary"]["repository"], "group/repo")
+            self.assertEqual(switched["targets"], [])
+            self.assertEqual(historical["provider"], "github")
+            self.assertEqual(switched["historical"][-1]["provider"], "github")
+            self.assertEqual(
+                switched["last_switch"]["approval_id"],
+                "CUTOVER-1",
+            )
+
     def test_target_cannot_equal_primary(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             store = ProviderBindingStore(Path(tmp))

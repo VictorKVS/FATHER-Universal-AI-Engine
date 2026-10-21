@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -115,6 +116,78 @@ class ProviderBindingStore:
         if written != state:
             raise OSError("Provider binding verification failed")
         return written_etag
+
+    def switch_primary(
+        self,
+        project: dict[str, Any],
+        *,
+        target_provider: str,
+        expected_etag: str,
+        approval_id: str,
+        verification_refs: dict[str, str],
+    ) -> tuple[dict[str, Any], str, dict[str, Any]]:
+        state, current_etag = self.read(project)
+        if current_etag != expected_etag:
+            raise BindingConflictError("Provider bindings changed")
+
+        target_provider = target_provider.strip()
+        if not target_provider:
+            raise ValueError("target provider required")
+
+        targets = list(state.get("targets") or [])
+        target = next(
+            (
+                item
+                for item in targets
+                if item.get("provider") == target_provider
+            ),
+            None,
+        )
+        if not target:
+            raise ValueError("target binding not configured")
+
+        current_primary = dict(state.get("primary") or {})
+        if current_primary.get("provider") == target_provider:
+            raise ValueError("target provider already primary")
+
+        switched_at = datetime.now(timezone.utc).isoformat()
+        historical_entry = {
+            **current_primary,
+            "status": "HISTORICAL",
+            "switched_out_at": switched_at,
+            "switched_to": target_provider,
+            "approval_id": approval_id,
+            "verification_refs": dict(verification_refs),
+        }
+        historical = list(state.get("historical") or [])
+        historical.append(historical_entry)
+
+        state["primary"] = {
+            "provider": target["provider"],
+            "repository": target["repository"],
+            "branch": target["branch"],
+            "status": "PRIMARY",
+            "switched_in_at": switched_at,
+            "approval_id": approval_id,
+            "verification_refs": dict(verification_refs),
+        }
+        state["targets"] = [
+            item
+            for item in targets
+            if item.get("provider") != target_provider
+        ]
+        state["historical"] = historical
+        state["last_switch"] = {
+            "from_provider": current_primary.get("provider"),
+            "to_provider": target_provider,
+            "switched_at": switched_at,
+            "approval_id": approval_id,
+            "verification_refs": dict(verification_refs),
+        }
+        state["schema_version"] = "father.dev_platform.bindings.v0.2"
+
+        new_etag = self.write(project, state, current_etag)
+        return state, new_etag, historical_entry
 
     def upsert_target(
         self,
