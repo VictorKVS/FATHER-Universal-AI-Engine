@@ -27,7 +27,14 @@
         "OSINT",
         "ACADEMY",
         "TRAINING"
-      ]
+      ],
+      "git_workspace": {
+        "relation_to_default": "DIVERGED",
+        "ahead_by": 16,
+        "behind_by": 3,
+        "open_pull_request": false,
+        "snapshot_ref": "docs/git/current_workspace.snapshot.json"
+      }
     },
     {
       "project_id": "LIFE-001",
@@ -53,7 +60,11 @@
         "FATHER",
         "LIFE",
         "PERSONAL_AGENT"
-      ]
+      ],
+      "git_workspace": {
+        "relation_to_default": "EXTERNAL_REPOSITORY_NOT_REFRESHED_IN_THIS_SNAPSHOT",
+        "snapshot_ref": null
+      }
     }
   ]
 }
