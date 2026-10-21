@@ -43,6 +43,10 @@ from provider_binding_store import (
     BindingConflictError,
     ProviderBindingStore,
 )
+from migration_security_review_store import (
+    MigrationReviewConflictError,
+    MigrationSecurityReviewStore,
+)
 from state_store import ProjectStateStore, StateConflictError
 from traceability_engine import build_traceability_graph
 from providers.base import ProviderError
@@ -75,6 +79,7 @@ EVIDENCE_PACK_STORE = EvidencePackStore(REPO_ROOT)
 PROJECT_STATE_STORE = ProjectStateStore(REPO_ROOT)
 DOCUMENT_STORE = DocumentStore(REPO_ROOT)
 PROVIDER_BINDING_STORE = ProviderBindingStore(REPO_ROOT)
+MIGRATION_SECURITY_REVIEW_STORE = MigrationSecurityReviewStore(REPO_ROOT)
 
 MAX_JSON_BODY = 16 * 1024
 
@@ -577,6 +582,142 @@ def verify_migration_target(
         "security_review_required": True,
         "switch_primary_eligible": False,
         "switch_primary_blockers": switch_blockers,
+    }
+
+
+def migration_security_reviews(project_id: str) -> dict[str, Any]:
+    project = project_by_id(project_id)
+    if not project:
+        return {
+            "status": "BLOCKED",
+            "errors": ["PROJECT_NOT_FOUND"],
+        }
+    state, etag = MIGRATION_SECURITY_REVIEW_STORE.read(project_id)
+    return {
+        "status": "OK",
+        "project_id": project_id,
+        "etag": etag,
+        "reviews": state.get("reviews", []),
+    }
+
+
+def review_migration_security(
+    project_id: str,
+    target_provider: str,
+    decision: str,
+    rationale: str,
+    reviewed_by: str,
+    expected_etag: str,
+) -> dict[str, Any]:
+    project = project_by_id(project_id)
+    if not project:
+        return {
+            "status": "BLOCKED",
+            "errors": ["PROJECT_NOT_FOUND"],
+        }
+
+    decision = decision.strip().upper()
+    verification = verify_migration_target(project_id, target_provider)
+
+    if decision == "APPROVE" and verification.get("status") != "PASS":
+        return {
+            "status": "BLOCKED",
+            "errors": ["TECHNICAL_MIGRATION_EVIDENCE_NOT_PASS"],
+            "verification": verification,
+        }
+
+    verification_evidence = verification.get("evidence") or {}
+    refs = {
+        "branch": (
+            (verification_evidence.get("branch") or {}).get("evidence_id")
+            or ""
+        ),
+        "refs": (
+            (verification_evidence.get("refs") or {}).get("evidence_id")
+            or ""
+        ),
+        "access": (
+            (verification_evidence.get("access_policy") or {}).get(
+                "evidence_id"
+            )
+            or ""
+        ),
+        "verification_id": (
+            (verification.get("verification") or {}).get("verification_id")
+            or ""
+        ),
+        "ref_parity_report_id": (
+            (verification.get("ref_parity") or {}).get("report_id")
+            or ""
+        ),
+        "access_policy_report_id": (
+            (verification.get("access_policy") or {}).get("report_id")
+            or ""
+        ),
+    }
+
+    try:
+        review, new_etag = MIGRATION_SECURITY_REVIEW_STORE.append_review(
+            project_id=project_id,
+            target_provider=target_provider,
+            decision=decision,
+            rationale=rationale,
+            reviewed_by=reviewed_by,
+            verification_refs=refs,
+            expected_etag=expected_etag,
+        )
+    except MigrationReviewConflictError:
+        current, current_etag = MIGRATION_SECURITY_REVIEW_STORE.read(
+            project_id
+        )
+        return {
+            "status": "CONFLICT",
+            "errors": ["MIGRATION_SECURITY_REVIEW_ETAG_CONFLICT"],
+            "current_etag": current_etag,
+            "reviews": current.get("reviews", []),
+        }
+    except ValueError as exc:
+        return {
+            "status": "BLOCKED",
+            "errors": [str(exc)],
+        }
+
+    evidence = EVIDENCE_STORE.store_evidence(
+        project_id=project_id,
+        evidence_type="MIGRATION_SECURITY_REVIEW",
+        provider=target_provider,
+        payload=review,
+        subject_key=review["review_id"],
+        refs=refs,
+    )
+    event = EVIDENCE_STORE.append_manufacturing_event(
+        project_id=project_id,
+        event_type="MIGRATION_SECURITY_REVIEWED",
+        source_ref=review["review_id"],
+        payload={
+            "target_provider": target_provider,
+            "decision": decision,
+            "reviewed_by": reviewed_by,
+            "evidence_id": evidence["evidence_id"],
+        },
+    )
+    return {
+        "status": "APPLIED",
+        "project_id": project_id,
+        "target_provider": target_provider,
+        "decision": decision,
+        "review": review,
+        "etag": new_etag,
+        "evidence": evidence,
+        "manufacturing_event_id": event["event_id"],
+        "worktree_change": True,
+        "git_commit_required": True,
+        "cutover_eligible": False,
+        "cutover_blockers": (
+            ["CUTOVER_APPROVAL_REQUIRED"]
+            if decision == "APPROVE"
+            else ["MIGRATION_SECURITY_REVIEW_NOT_APPROVED"]
+        ),
     }
 
 
@@ -1741,6 +1882,7 @@ class FatherHandler(BaseHTTPRequestHandler):
                         "manufacturing_events": True,
                         "provider_bindings": True,
                         "migration_parity_verification": True,
+                        "migration_security_review": True,
                         "gate_engine": True,
                         "commit_bound_devsecops": True,
                         "atomic_project_state": True,
@@ -1850,6 +1992,14 @@ class FatherHandler(BaseHTTPRequestHandler):
                     and parts[4] == "bindings"
                 ):
                     self._json(provider_bindings(project_id))
+                    return
+
+                if (
+                    len(parts) == 5
+                    and parts[3] == "dev-platform"
+                    and parts[4] == "migration-security"
+                ):
+                    self._json(migration_security_reviews(project_id))
                     return
 
                 if len(parts) == 4 and parts[3] == "stages":
@@ -1982,6 +2132,7 @@ class FatherHandler(BaseHTTPRequestHandler):
             "/api/migrations/plan",
             "/api/migrations/bind",
             "/api/migrations/verify",
+            "/api/migrations/security-review",
             "/api/gates/recalculate",
             "/api/gates/decide",
             "/api/artifacts/upsert",
@@ -2376,6 +2527,54 @@ class FatherHandler(BaseHTTPRequestHandler):
                 target_provider,
             )
             if result["status"] == "BLOCKED":
+                self._json(result, HTTPStatus.BAD_REQUEST)
+            else:
+                self._json(result)
+            return
+
+        if path == "/api/migrations/security-review":
+            if self.headers.get("X-FATHER-Action") != "confirm":
+                self._error_json(
+                    HTTPStatus.FORBIDDEN,
+                    "EXPLICIT_ACTION_HEADER_REQUIRED",
+                )
+                return
+            if body.get("confirm") is not True:
+                self._error_json(
+                    HTTPStatus.FORBIDDEN,
+                    "EXPLICIT_CONFIRMATION_REQUIRED",
+                )
+                return
+            target_provider = str(body.get("target_provider", "")).strip()
+            decision = str(body.get("decision", "")).strip()
+            rationale = str(body.get("rationale", "")).strip()
+            reviewed_by = str(body.get("reviewed_by", "")).strip()
+            expected_etag = str(body.get("expected_etag", "")).strip()
+            if not all(
+                (
+                    target_provider,
+                    decision,
+                    rationale,
+                    reviewed_by,
+                    expected_etag,
+                )
+            ):
+                self._error_json(
+                    HTTPStatus.BAD_REQUEST,
+                    "INVALID_MIGRATION_SECURITY_REVIEW_REQUEST",
+                )
+                return
+            result = review_migration_security(
+                project_id,
+                target_provider,
+                decision,
+                rationale,
+                reviewed_by,
+                expected_etag,
+            )
+            if result["status"] == "CONFLICT":
+                self._json(result, HTTPStatus.CONFLICT)
+            elif result["status"] == "BLOCKED":
                 self._json(result, HTTPStatus.BAD_REQUEST)
             else:
                 self._json(result)
