@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urlparse
 
+from devsecops_state import evaluate_devsecops_state
 from evidence_store import EvidenceStore
 from gate_engine import (
     apply_gate_decision,
@@ -767,6 +768,7 @@ class FatherHandler(BaseHTTPRequestHandler):
                         "evidence_store": True,
                         "manufacturing_events": True,
                         "gate_engine": True,
+                        "commit_bound_devsecops": True,
                         "atomic_project_state": True,
                     }
                 )
@@ -848,6 +850,54 @@ class FatherHandler(BaseHTTPRequestHandler):
                             "stage": stage,
                         }
                     )
+                    return
+
+                if (
+                    len(parts) == 5
+                    and parts[3] == "devsecops"
+                    and parts[4] == "current"
+                ):
+                    try:
+                        live = live_provider_state(project)
+                        evaluated = evaluate_devsecops_state(live)
+                        evidence = EVIDENCE_STORE.store_evidence(
+                            project_id=project_id,
+                            evidence_type="DEVSECOPS_CURRENT_HEAD_STATE",
+                            provider=str(live.get("provider") or ""),
+                            payload=evaluated,
+                            subject_key=(
+                                str(live.get("provider") or "unknown")
+                                + ":"
+                                + str(evaluated.get("head_sha") or "NO_HEAD")
+                                + ":"
+                                + str(evaluated.get("status") or "UNKNOWN")
+                            ),
+                            refs={
+                                "workflow_run_id": (
+                                    evaluated.get("workflow_run") or {}
+                                ).get("id"),
+                                "artifact_id": (
+                                    evaluated.get("artifact") or {}
+                                ).get("id"),
+                            },
+                        )
+                        self._json(
+                            {
+                                "project_id": project_id,
+                                "devsecops": evaluated,
+                                "evidence": evidence,
+                            }
+                        )
+                    except NotImplementedError:
+                        self._error_json(
+                            HTTPStatus.NOT_IMPLEMENTED,
+                            "PROVIDER_ADAPTER_NOT_IMPLEMENTED",
+                        )
+                    except ProviderError:
+                        self._error_json(
+                            HTTPStatus.BAD_GATEWAY,
+                            "PROVIDER_READ_FAILED",
+                        )
                     return
 
                 if (
