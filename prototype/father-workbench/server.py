@@ -37,6 +37,7 @@ from gate_engine import (
 )
 from lifecycle_engine import reconcile_project_flow
 from migration_engine import build_migration_plan
+from migration_access_policy import evaluate_access_policy
 from migration_verifier import verify_provider_parity, verify_ref_inventory
 from provider_binding_store import (
     BindingConflictError,
@@ -342,6 +343,32 @@ def upsert_provider_binding(
     }
 
 
+def access_policy_or_incomplete(
+    adapter: Any,
+    provider: str,
+    repository: str,
+    branch: str,
+) -> dict[str, Any]:
+    method = getattr(adapter, "access_policy", None)
+    if not callable(method):
+        return {
+            "provider": provider,
+            "repository": repository,
+            "branch": branch,
+            "complete": False,
+            "protected": None,
+            "force_push_allowed": None,
+            "deletion_allowed": None,
+            "review_required": None,
+            "code_owner_review_required": None,
+            "required_status_checks": None,
+            "admin_enforcement": None,
+            "direct_push_restricted": None,
+            "limitations": ["ACCESS_POLICY_ADAPTER_NOT_IMPLEMENTED"],
+        }
+    return method(repository, branch)
+
+
 def ref_inventory_or_incomplete(
     adapter: Any,
     provider: str,
@@ -416,6 +443,18 @@ def verify_migration_target(
             str(target["provider"]),
             target_repository,
         )
+        source_access = access_policy_or_incomplete(
+            source_adapter,
+            source_provider,
+            source_repository,
+            str(dev.get("branch") or project.get("branch") or ""),
+        )
+        target_access = access_policy_or_incomplete(
+            target_adapter,
+            str(target["provider"]),
+            target_repository,
+            str(target["branch"]),
+        )
     except NotImplementedError:
         return {
             "status": "BLOCKED",
@@ -436,6 +475,11 @@ def verify_migration_target(
         project_id=project_id,
         source=source_inventory,
         target=target_inventory,
+    )
+    access_report = evaluate_access_policy(
+        project_id=project_id,
+        source=source_access,
+        target=target_access,
     )
 
     branch_evidence = EVIDENCE_STORE.store_evidence(
@@ -462,10 +506,23 @@ def verify_migration_target(
             "binding_etag": binding_etag,
         },
     )
+    access_evidence = EVIDENCE_STORE.store_evidence(
+        project_id=project_id,
+        evidence_type="ACCESS_AND_BRANCH_POLICY_REPORT",
+        provider=target_provider,
+        payload=access_report,
+        subject_key=access_report["report_id"],
+        refs={
+            "source_provider": source_provider,
+            "target_provider": target_provider,
+            "binding_etag": binding_etag,
+        },
+    )
 
     branch_ok = branch_report["state"] == "PASS"
     ref_ok = ref_report["state"] == "PASS"
-    overall = "PASS" if branch_ok and ref_ok else "FAIL"
+    access_ok = access_report["state"] == "PASS_WITH_REVIEW"
+    overall = "PASS" if branch_ok and ref_ok and access_ok else "FAIL"
     event = EVIDENCE_STORE.append_manufacturing_event(
         project_id=project_id,
         event_type=(
@@ -479,8 +536,11 @@ def verify_migration_target(
             "state": overall,
             "branch_blockers": branch_report["blockers"],
             "ref_blockers": ref_report["blockers"],
+            "access_blockers": access_report["blockers"],
+            "access_warnings": access_report["warnings"],
             "branch_evidence_id": branch_evidence["evidence_id"],
             "ref_evidence_id": ref_evidence["evidence_id"],
+            "access_evidence_id": access_evidence["evidence_id"],
         },
     )
 
@@ -489,9 +549,10 @@ def verify_migration_target(
         switch_blockers.append("BRANCH_PARITY_NOT_PROVEN")
     if not ref_ok:
         switch_blockers.append("FULL_REF_PARITY_REQUIRED")
+    if not access_ok:
+        switch_blockers.append("ACCESS_AND_BRANCH_POLICY_REPORT_REQUIRED")
     switch_blockers.extend(
         [
-            "ACCESS_AND_BRANCH_POLICY_REPORT_REQUIRED",
             "MIGRATION_SECURITY_REVIEW_REQUIRED",
             "CUTOVER_APPROVAL_REQUIRED",
         ]
@@ -503,13 +564,17 @@ def verify_migration_target(
         "binding_etag": binding_etag,
         "verification": branch_report,
         "ref_parity": ref_report,
+        "access_policy": access_report,
         "evidence": {
             "branch": branch_evidence,
             "refs": ref_evidence,
+            "access_policy": access_evidence,
         },
         "manufacturing_event_id": event["event_id"],
         "branch_parity_proven": branch_ok,
         "full_ref_parity_proven": ref_ok,
+        "access_policy_not_weaker": access_ok,
+        "security_review_required": True,
         "switch_primary_eligible": False,
         "switch_primary_blockers": switch_blockers,
     }
