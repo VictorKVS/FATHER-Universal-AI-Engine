@@ -410,3 +410,19 @@ CATALOG = VERIFIED OUTPUTS THAT MAY BE REUSED
 \`\`\`
 
 The three must be linked but not collapsed into one store.
+
+
+---
+
+# Project Memory for approved projects
+
+Every approved/released project must expose a compact **Project Memory**.
+
+Project workspace adds:
+
+- **Why We Built It This Way** — approved rationale digest;
+- **Full History** — complete Manufacturing KB event/history view.
+
+Completed projects remain visible in the portfolio with their approved memory, known limitations, last review and revisit triggers.
+
+See `docs/15_FATHER_PROJECT_MEMORY.md`.
