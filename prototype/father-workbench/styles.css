@@ -99,3 +99,7 @@ main{padding:27px 32px 60px;overflow:hidden}.top,.hero,.sectionTitle,.panelHead{
 .providerSwitchAction{border:1px solid #ffb84d88;background:#241b0c;color:#ffd18a;border-radius:6px;padding:6px;font-size:7px;cursor:pointer}
 .providerSwitchAction:hover{border-color:#ffb84d}
 .providerSwitchAction:disabled{opacity:.35;cursor:not-allowed}
+
+.providerConnectionState{margin-top:7px;padding:5px 6px;border:1px solid #223847;border-radius:6px;font-size:7px}
+.providerConnectionState.pass{border-color:#44d17a55;color:#8ff0ad}
+.providerConnectionState.blocked,.providerConnectionState.fail{border-color:#ff5e6c55;color:#ff98a2}

@@ -6,6 +6,7 @@ let model={
   registry:fallbackRegistry,
   providers:fallbackProviders,
   providerRuntime:{providers:[]},
+  providerConnections:{},
   git:fallbackGit,
   stageStates:{},
   liveStates:{},
@@ -1421,6 +1422,26 @@ function renderScmActions(project,state,branch){
   });
 }
 
+async function testProviderConnection(projectId,targetProvider){
+  try{
+    const response=await fetch("/api/providers/test-connection",{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({
+        project_id:projectId,
+        target_provider:targetProvider||""
+      })
+    });
+    const body=await response.json().catch(()=>({}));
+    return{http_status:response.status,...body};
+  }catch(_error){
+    return{
+      status:"BLOCKED",
+      errors:["CONTROL_PLANE_API_UNAVAILABLE"]
+    };
+  }
+}
+
 async function switchPrimaryProvider(
   projectId,
   targetProvider,
@@ -1796,6 +1817,7 @@ function renderProviderMatrix(){
     ).join("");
     const canTarget=provider.id!==primary && runtime?.adapter_loaded;
     const verification=model.migrationVerifications[provider.id];
+    const connection=model.providerConnections[provider.id];
     const bindingText=binding
       ?binding.repository+" · "+binding.branch
       :"not bound";
@@ -1810,6 +1832,12 @@ function renderProviderMatrix(){
         writes+
       '</div>'+
       '<div class="providerRole">'+role+'</div>'+
+      (connection
+        ?'<div class="providerConnectionState '+stateClass(connection.status)+'">'+
+          'CONNECT '+esc(connection.status)+
+          (connection.head_sha?' · '+esc(String(connection.head_sha).slice(0,8)):'')+
+          '</div>'
+        :'')+
       (verification
         ?'<div class="providerVerifyState '+(verification.status==="PASS"?"pass":"blocked")+'">'+
           esc(verification.status)+
@@ -1828,8 +1856,14 @@ function renderProviderMatrix(){
           'CUTOVER '+esc(latestCutover.decision)+' · '+esc(latestCutover.approved_by)+
           '</div>'
         :'')+
+      (provider.id===primary
+        ?'<div class="providerActionRow">'+
+          '<button class="providerConnectionAction" data-provider="'+esc(provider.id)+'">Test connection</button>'+
+          '</div>'
+        :'')+
       (canTarget
         ?'<div class="providerActionRow">'+
+          '<button class="providerConnectionAction" data-provider="'+esc(provider.id)+'">Test connection</button>'+
           '<button class="providerAction" data-provider="'+esc(provider.id)+'">Plan</button>'+
           '<button class="providerBindAction" data-provider="'+esc(provider.id)+'">'+
             (binding?"Edit binding":"Bind target")+
@@ -1842,6 +1876,44 @@ function renderProviderMatrix(){
         :'')+
       '</div>';
   }).join("");
+
+  host.querySelectorAll(".providerConnectionAction").forEach((button)=>{
+    button.onclick=async()=>{
+      const target=button.dataset.provider;
+      const isPrimary=target===primary;
+      const binding=isPrimary
+        ?(model.providerBindings[project.project_id]?.bindings?.primary||null)
+        :(model.providerBindings[project.project_id]?.bindings?.targets||[])
+          .find((item)=>item.provider===target);
+      if(!binding){
+        window.alert("Provider binding is not configured.");
+        return;
+      }
+      const output=byId("actionResult");
+      output.textContent="Testing "+target+" repository/branch access…";
+      output.className="actionResult";
+      const tested=await testProviderConnection(
+        project.project_id,
+        isPrimary?"":target
+      );
+      model.providerConnections[target]=tested;
+      if(tested.status==="PASS"){
+        output.textContent=
+          "CONNECT PASS · "+target+" · "+
+          tested.repository+" / "+tested.branch+
+          " · HEAD "+String(tested.head_sha||"").slice(0,12)+
+          " · evidence "+(tested.evidence?.evidence_id||"captured");
+        output.className="actionResult ok";
+      }else{
+        output.textContent=
+          "CONNECT "+(tested.status||"FAIL")+" · "+target+" · "+
+          (tested.errors||["UNKNOWN_ERROR"]).join(", ");
+        output.className="actionResult block";
+      }
+      await loadRuntimeHistory(project);
+      renderProviderMatrix();
+    };
+  });
 
   host.querySelectorAll(".providerAction").forEach((button)=>{
     button.onclick=async()=>{
