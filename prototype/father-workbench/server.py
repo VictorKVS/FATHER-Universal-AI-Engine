@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urlparse
 
+from evidence_store import EvidenceStore
 from providers.github_adapter import GitHubAdapter, ProviderError
 
 APP_DIR = Path(__file__).resolve().parent
@@ -27,6 +28,7 @@ PROVIDERS_FILE = REPO_ROOT / "config" / "dev_platform" / "providers.json"
 GIT_SNAPSHOT_FILE = REPO_ROOT / "docs" / "git" / "current_workspace.snapshot.json"
 RUNTIME_DIR = APP_DIR / "runtime"
 AUDIT_FILE = RUNTIME_DIR / "scm-actions.jsonl"
+EVIDENCE_STORE = EvidenceStore(RUNTIME_DIR)
 
 MAX_JSON_BODY = 16 * 1024
 
@@ -110,6 +112,67 @@ def live_provider_state(project: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("Project has no repository/branch binding")
 
     return GitHubAdapter().live_state(str(repository), str(branch))
+
+
+def provider_state_subject_key(
+    project: dict[str, Any],
+    live: dict[str, Any],
+) -> str:
+    repository = (live.get("repository") or {}).get("full_name") or project.get("repository")
+    branch = (live.get("branch") or {}).get("name") or project.get("branch")
+    head_sha = (live.get("branch") or {}).get("head_sha") or "NO_HEAD"
+    workflow = (live.get("workflow_runs") or [{}])[0] if live.get("workflow_runs") else {}
+    workflow_key = ":".join(
+        str(value or "-")
+        for value in (
+            workflow.get("id"),
+            workflow.get("status"),
+            workflow.get("conclusion"),
+        )
+    )
+    change_requests = ",".join(
+        f"{item.get('number')}:{item.get('state')}:{item.get('updated_at')}"
+        for item in live.get("change_requests", [])
+    )
+    return "|".join(
+        [
+            str(live.get("provider") or "unknown"),
+            str(repository or "unknown"),
+            str(branch or "unknown"),
+            str(head_sha),
+            workflow_key,
+            change_requests,
+        ]
+    )
+
+
+def capture_live_provider_evidence(
+    project: dict[str, Any],
+    live: dict[str, Any],
+    source_ref: str = "LIVE_READ",
+) -> dict[str, Any]:
+    evidence = EVIDENCE_STORE.store_evidence(
+        project_id=str(project["project_id"]),
+        evidence_type="PROVIDER_STATE",
+        provider=str(live.get("provider") or ""),
+        payload=live,
+        subject_key=provider_state_subject_key(project, live),
+        refs={"source_ref": source_ref},
+    )
+    if not evidence.get("deduplicated"):
+        EVIDENCE_STORE.append_manufacturing_event(
+            project_id=str(project["project_id"]),
+            event_type="PROVIDER_STATE_OBSERVED",
+            source_ref=evidence["evidence_id"],
+            payload={
+                "provider": live.get("provider"),
+                "repository": (live.get("repository") or {}).get("full_name"),
+                "branch": (live.get("branch") or {}).get("name"),
+                "head_sha": (live.get("branch") or {}).get("head_sha"),
+                "evidence_id": evidence["evidence_id"],
+            },
+        )
+    return evidence
 
 
 def write_audit_event(event: dict[str, Any]) -> None:
@@ -234,6 +297,12 @@ def execute_action(
         "target": target,
     }
     write_audit_event(started)
+    EVIDENCE_STORE.append_manufacturing_event(
+        project_id=project_id,
+        event_type="ACTION_STARTED",
+        source_ref=action_id,
+        payload=started,
+    )
 
     try:
         if action == "SCM.CREATE_BRANCH":
@@ -259,6 +328,12 @@ def execute_action(
             "error": str(exc),
         }
         write_audit_event(failed)
+        EVIDENCE_STORE.append_manufacturing_event(
+            project_id=project_id,
+            event_type="ACTION_FAILED",
+            source_ref=action_id,
+            payload=failed,
+        )
         return {
             "action_id": action_id,
             "project_id": project_id,
@@ -276,6 +351,52 @@ def execute_action(
         "result": result,
     }
     write_audit_event(succeeded)
+
+    event = EVIDENCE_STORE.append_manufacturing_event(
+        project_id=project_id,
+        event_type="ACTION_SUCCEEDED",
+        source_ref=action_id,
+        payload=succeeded,
+    )
+    try:
+        evidence = EVIDENCE_STORE.store_evidence(
+            project_id=project_id,
+            evidence_type="SCM_ACTION_RESULT",
+            provider=str(provider or ""),
+            payload=result,
+            subject_key=action_id,
+            refs={
+                "action_id": action_id,
+                "manufacturing_event_id": event["event_id"],
+            },
+        )
+    except OSError:
+        degraded = {
+            **succeeded,
+            "status": "SUCCEEDED_EVIDENCE_DEGRADED",
+            "evidence_error": "EVIDENCE_PERSIST_FAILED",
+        }
+        write_audit_event(degraded)
+        EVIDENCE_STORE.append_manufacturing_event(
+            project_id=project_id,
+            event_type="EVIDENCE_PERSIST_FAILED",
+            source_ref=action_id,
+            payload={
+                "action_id": action_id,
+                "provider_mutation": True,
+            },
+        )
+        return {
+            "action_id": action_id,
+            "project_id": project_id,
+            "action": action,
+            "status": "SUCCEEDED_EVIDENCE_DEGRADED",
+            "allowed": False,
+            "reasons": ["EVIDENCE_PERSIST_FAILED"],
+            "provider_mutation": True,
+            "result": result,
+        }
+
     return {
         "action_id": action_id,
         "project_id": project_id,
@@ -285,6 +406,8 @@ def execute_action(
         "reasons": [],
         "provider_mutation": True,
         "result": result,
+        "evidence": evidence,
+        "manufacturing_event_id": event["event_id"],
     }
 
 
@@ -396,6 +519,8 @@ class FatherHandler(BaseHTTPRequestHandler):
                         ],
                         "stage_state_api": True,
                         "live_provider_read": ["github"],
+                        "evidence_store": True,
+                        "manufacturing_events": True,
                     }
                 )
                 return
@@ -434,6 +559,29 @@ class FatherHandler(BaseHTTPRequestHandler):
                     )
                     return
 
+                if len(parts) == 4 and parts[3] == "evidence":
+                    self._json(
+                        {
+                            "project_id": project_id,
+                            "evidence": EVIDENCE_STORE.list_evidence(project_id),
+                        }
+                    )
+                    return
+
+                if (
+                    len(parts) == 4
+                    and parts[3] == "manufacturing-events"
+                ):
+                    self._json(
+                        {
+                            "project_id": project_id,
+                            "events": EVIDENCE_STORE.list_manufacturing_events(
+                                project_id
+                            ),
+                        }
+                    )
+                    return
+
                 if len(parts) == 4 and parts[3] == "stages":
                     self._json(project_stage_state(project))
                     return
@@ -457,10 +605,19 @@ class FatherHandler(BaseHTTPRequestHandler):
                     and parts[4] == "live"
                 ):
                     try:
+                        live = live_provider_state(project)
+                        try:
+                            evidence = capture_live_provider_evidence(project, live)
+                            evidence_status = "CAPTURED"
+                        except OSError:
+                            evidence = None
+                            evidence_status = "PERSIST_FAILED"
                         self._json(
                             {
                                 "project_id": project_id,
-                                "live": live_provider_state(project),
+                                "live": live,
+                                "evidence": evidence,
+                                "evidence_status": evidence_status,
                             }
                         )
                     except NotImplementedError:
