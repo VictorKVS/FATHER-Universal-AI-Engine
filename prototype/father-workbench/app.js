@@ -16,6 +16,7 @@ let model={
   evidencePacks:{},
   providerBindings:{},
   migrationSecurity:{},
+  migrationCutover:{},
   migrationPlans:{},
   migrationVerifications:{}
 };
@@ -111,6 +112,10 @@ async function loadRuntimeHistory(project){
     ["/api/projects/"+projectId+"/dev-platform/migration-security"],
     {status:"BLOCKED",reviews:[],etag:null}
   );
+  const migrationCutover=await readFirst(
+    ["/api/projects/"+projectId+"/dev-platform/cutover"],
+    {status:"BLOCKED",approvals:[],etag:null}
+  );
   model.evidenceStates[project.project_id]=evidence.evidence||[];
   model.manufacturingEvents[project.project_id]=events.events||[];
   model.traceability[project.project_id]=traceability;
@@ -118,6 +123,7 @@ async function loadRuntimeHistory(project){
   model.evidencePacks[project.project_id]=packs.packs||[];
   model.providerBindings[project.project_id]=bindings;
   model.migrationSecurity[project.project_id]=migrationSecurity;
+  model.migrationCutover[project.project_id]=migrationCutover;
 }
 
 async function loadLiveState(project){
@@ -1396,6 +1402,41 @@ function renderScmActions(project,state,branch){
   });
 }
 
+async function submitMigrationCutoverReview(
+  projectId,
+  targetProvider,
+  decision,
+  rationale,
+  approvedBy,
+  expectedEtag
+){
+  try{
+    const response=await fetch("/api/migrations/cutover-review",{
+      method:"POST",
+      headers:{
+        "Content-Type":"application/json",
+        "X-FATHER-Action":"confirm"
+      },
+      body:JSON.stringify({
+        project_id:projectId,
+        target_provider:targetProvider,
+        decision,
+        rationale,
+        approved_by:approvedBy,
+        expected_etag:expectedEtag,
+        confirm:true
+      })
+    });
+    const body=await response.json().catch(()=>({}));
+    return{http_status:response.status,...body};
+  }catch(_error){
+    return{
+      status:"BLOCKED",
+      errors:["CONTROL_PLANE_API_UNAVAILABLE"]
+    };
+  }
+}
+
 async function submitMigrationSecurityReview(
   projectId,
   targetProvider,
@@ -1687,6 +1728,9 @@ function renderProviderMatrix(){
     const latestReview=(model.migrationSecurity[project.project_id]?.reviews||[])
       .filter((item)=>item.target_provider===provider.id)
       .slice(-1)[0];
+    const latestCutover=(model.migrationCutover[project.project_id]?.approvals||[])
+      .filter((item)=>item.target_provider===provider.id)
+      .slice(-1)[0];
     const role=provider.id===primary
       ?"PRIMARY"
       :(targets.has(provider.id)?"MIGRATION TARGET":"AVAILABLE");
@@ -1722,6 +1766,11 @@ function renderProviderMatrix(){
           'SECURITY '+esc(latestReview.decision)+' · '+esc(latestReview.reviewed_by)+
           '</div>'
         :'')+
+      (latestCutover
+        ?'<div class="providerCutoverState '+stateClass(latestCutover.decision==="APPROVE"?"PASS":latestCutover.decision==="CANCEL"?"FAIL":"HOLD")+'">'+
+          'CUTOVER '+esc(latestCutover.decision)+' · '+esc(latestCutover.approved_by)+
+          '</div>'
+        :'')+
       (canTarget
         ?'<div class="providerActionRow">'+
           '<button class="providerAction" data-provider="'+esc(provider.id)+'">Plan</button>'+
@@ -1730,6 +1779,7 @@ function renderProviderMatrix(){
           '</button>'+
           '<button class="providerVerifyAction" data-provider="'+esc(provider.id)+'" '+(binding?"":"disabled")+'>Verify parity</button>'+
           '<button class="providerSecurityAction" data-provider="'+esc(provider.id)+'" '+(binding?"":"disabled")+'>Security review</button>'+
+          '<button class="providerCutoverAction" data-provider="'+esc(provider.id)+'" '+(latestReview?.decision==="APPROVE"?"":"disabled")+'>Cutover gate</button>'+
           '</div>'
         :'')+
       '</div>';
@@ -1907,6 +1957,69 @@ function renderProviderMatrix(){
       renderProviderMatrix();
     };
   });
+
+  host.querySelectorAll(".providerCutoverAction:not(:disabled)").forEach((button)=>{
+    button.onclick=async()=>{
+      const target=button.dataset.provider;
+      const envelope=model.migrationCutover[project.project_id]||{};
+      if(!envelope.etag){
+        window.alert("Cutover ETag unavailable. Refresh FATHER.");
+        return;
+      }
+      const decision=(window.prompt(
+        "Cutover decision: APPROVE, HOLD or CANCEL",
+        "HOLD"
+      )||"").trim().toUpperCase();
+      if(!["APPROVE","HOLD","CANCEL"].includes(decision)){
+        window.alert("Invalid decision.");
+        return;
+      }
+      const rationale=window.prompt(
+        "Cutover rationale (minimum 20 characters)",
+        ""
+      );
+      if(!rationale)return;
+      const approver=window.prompt(
+        "Approved by",
+        "Project Owner"
+      );
+      if(!approver)return;
+      const confirmed=window.confirm(
+        "Record "+decision+" cutover decision for "+target+
+        "? APPROVE will re-verify current evidence and security review freshness."
+      );
+      if(!confirmed)return;
+
+      const output=byId("actionResult");
+      output.textContent="Validating cutover gate…";
+      output.className="actionResult";
+      const reviewed=await submitMigrationCutoverReview(
+        project.project_id,
+        target,
+        decision,
+        rationale,
+        approver,
+        envelope.etag
+      );
+      if(reviewed.status!=="APPLIED"){
+        output.textContent=
+          (reviewed.status||"BLOCKED")+" · "+
+          (reviewed.errors||["UNKNOWN_ERROR"]).join(", ");
+        output.className="actionResult block";
+        return;
+      }
+      await loadRuntimeHistory(project);
+      output.textContent=
+        reviewed.approval.approval_id+" · CUTOVER "+reviewed.decision+
+        " · tracked approval changed · Git commit required"+
+        (reviewed.switch_primary_eligible
+          ?" · switch-primary gate READY (execution still separate)"
+          :" · switch-primary BLOCKED");
+      output.className=
+        "actionResult "+(reviewed.decision==="APPROVE"?"ok":"block");
+      renderProviderMatrix();
+    };
+  });
 }
 
 byId("evidencePackBtn").onclick=handleEvidencePackExport;
@@ -1919,6 +2032,7 @@ byId("refresh").onclick=async()=>{
   model.evidencePacks={};
   model.providerBindings={};
   model.migrationSecurity={};
+  model.migrationCutover={};
   model.migrationPlans={};
   model.migrationVerifications={};
   await load();

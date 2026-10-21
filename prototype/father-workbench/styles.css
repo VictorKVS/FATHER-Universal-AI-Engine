@@ -87,3 +87,11 @@ main{padding:27px 32px 60px;overflow:hidden}.top,.hero,.sectionTitle,.panelHead{
 .providerSecurityAction{border:1px solid #745b2b;background:#231d0d;color:#ffe08a;border-radius:6px;padding:6px;font-size:7px;cursor:pointer}
 .providerSecurityAction:hover{border-color:#f2c94c88}
 .providerSecurityAction:disabled{opacity:.38;cursor:not-allowed}
+
+.providerCutoverState{margin-top:6px;padding:5px 6px;border:1px solid #223847;border-radius:6px;font-size:7px}
+.providerCutoverState.pass{border-color:#44d17a55;color:#8ff0ad}
+.providerCutoverState.blocked{border-color:#ff5e6c55;color:#ff98a2}
+.providerCutoverState.waiting{border-color:#f2c94c55;color:#ffe08a}
+.providerCutoverAction{border:1px solid #704884;background:#1c1023;color:#d9b5f0;border-radius:6px;padding:6px;font-size:7px;cursor:pointer}
+.providerCutoverAction:hover{border-color:#b889ff88}
+.providerCutoverAction:disabled{opacity:.38;cursor:not-allowed}
