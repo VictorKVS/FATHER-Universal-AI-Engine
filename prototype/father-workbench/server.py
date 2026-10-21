@@ -76,6 +76,21 @@ def project_by_id(project_id: str) -> dict[str, Any] | None:
     return None
 
 
+def provider_config_by_id(provider_id: str) -> dict[str, Any] | None:
+    data = read_json(PROVIDERS_FILE)
+    for provider in data.get("providers", []):
+        if provider.get("id") == provider_id:
+            return provider
+    return None
+
+
+def provider_supports_action(provider_id: str, action: str) -> bool:
+    provider = provider_config_by_id(provider_id)
+    if not provider:
+        return False
+    return action in set(provider.get("write_capabilities") or [])
+
+
 def branch_state(project: dict[str, Any]) -> dict[str, Any] | None:
     snapshot = read_json(GIT_SNAPSHOT_FILE)
     branch_name = project.get("branch")
@@ -238,8 +253,7 @@ def execute_action(
             "reasons": ["PROVIDER_WRITE_ADAPTER_NOT_IMPLEMENTED"],
         }
 
-    write_actions = getattr(adapter, "write_actions", set())
-    if action not in write_actions:
+    if not provider_supports_action(provider, action):
         return {
             **plan,
             "status": "BLOCKED",
@@ -494,12 +508,15 @@ def plan_action(project_id: str, action: str) -> dict[str, Any]:
     executable_actions = {"SCM.CREATE_BRANCH", "SCM.OPEN_CHANGE_REQUEST"}
 
     if action in executable_actions:
-        try:
-            adapter = provider_adapter(provider)
-            if action not in getattr(adapter, "write_actions", set()):
-                reasons.append("PROVIDER_ACTION_NOT_SUPPORTED")
-        except NotImplementedError:
-            reasons.append("PROVIDER_ADAPTER_NOT_IMPLEMENTED")
+        if not provider_config_by_id(provider):
+            reasons.append("PROVIDER_NOT_REGISTERED")
+        elif not provider_supports_action(provider, action):
+            reasons.append("PROVIDER_ACTION_NOT_SUPPORTED")
+        else:
+            try:
+                provider_adapter(provider)
+            except NotImplementedError:
+                reasons.append("PROVIDER_ADAPTER_NOT_IMPLEMENTED")
     elif action in SAFE_ACTIONS:
         reasons.append("ACTION_EXECUTION_NOT_IMPLEMENTED")
 
