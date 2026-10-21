@@ -43,6 +43,7 @@ jobs:
           python -m py_compile prototype/father-workbench/providers/github_adapter.py
           python -m py_compile prototype/father-workbench/providers/gitlab_adapter.py
           python -m py_compile scripts/check_secret_hygiene.py
+          python -m py_compile scripts/father_devsecops_baseline.py
 
       - name: Unit tests
         run: python -m unittest discover -s prototype/father-workbench/tests -v
@@ -55,6 +56,18 @@ jobs:
 
       - name: Baseline secret hygiene
         run: python scripts/check_secret_hygiene.py
+
+      - name: DevSecOps baseline and SPDX SBOM
+        run: python scripts/father_devsecops_baseline.py --output artifacts/devsecops
+
+      - name: Upload DevSecOps evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: father-devsecops-${{ github.sha }}
+          path: artifacts/devsecops/
+          if-no-files-found: error
+          retention-days: 30
 
       - name: Set up Node
         uses: actions/setup-node@v4
