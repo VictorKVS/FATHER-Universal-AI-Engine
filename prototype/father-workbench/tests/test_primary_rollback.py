@@ -151,7 +151,11 @@ class PrimaryRollbackTests(unittest.TestCase):
             )
             self.assertEqual(
                 [item["status"] for item in audit],
-                ["EXECUTING", "ROLLED_BACK"],
+                [
+                    "EXECUTING",
+                    "ROLLED_BACK",
+                    "ROLLED_BACK_FINALIZED",
+                ],
             )
             state, _etag = store.read(self.project)
             self.assertEqual(

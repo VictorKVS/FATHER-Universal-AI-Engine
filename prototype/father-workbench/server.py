@@ -1720,6 +1720,11 @@ def rollback_primary_provider(
 
     final_rollback_audit = {
         **payload,
+        "status": (
+            "ROLLED_BACK_FINALIZED"
+            if rollback_health_persisted and post_status == "PASS"
+            else "ROLLED_BACK_EVIDENCE_DEGRADED"
+        ),
         "rollback_health_persisted": rollback_health_persisted,
         "binding_etag": new_etag,
     }
