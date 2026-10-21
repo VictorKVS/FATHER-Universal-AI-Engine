@@ -56,8 +56,18 @@ def build_evidence_pack(
         for item in manufacturing_events[:200]
     ]
 
+    pack_status = (
+        "COMPLETE"
+        if (
+            devsecops.get("status") == "PASS"
+            and traceability.get("integrity_status") == "PASS"
+        )
+        else "PARTIAL"
+    )
+
     core = {
         "schema_version": "father.project_evidence_pack.v0.1",
+        "pack_status": pack_status,
         "project_id": project.get("project_id"),
         "project_name": project.get("name"),
         "generated_at": generated_at,
@@ -140,3 +150,33 @@ class EvidencePackStore:
             "created": True,
             "deduplicated": False,
         }
+
+    def list(self, project_id: str) -> list[dict[str, Any]]:
+        safe_project = "".join(
+            char if char.isalnum() or char in "._-" else "_"
+            for char in project_id
+        )
+        directory = (
+            self.repo_root / "projects" / "evidence" / safe_project
+        ).resolve()
+        directory.relative_to(self.repo_root)
+        if not directory.is_dir():
+            return []
+
+        result: list[dict[str, Any]] = []
+        for path in sorted(directory.glob("EVPACK-*.json"), reverse=True):
+            try:
+                value = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            result.append(
+                {
+                    "evidence_pack_id": value.get("evidence_pack_id"),
+                    "pack_status": value.get("pack_status"),
+                    "generated_at": value.get("generated_at"),
+                    "head_sha": value.get("head_sha"),
+                    "content_sha256": value.get("content_sha256"),
+                    "path": path.relative_to(self.repo_root).as_posix(),
+                }
+            )
+        return result

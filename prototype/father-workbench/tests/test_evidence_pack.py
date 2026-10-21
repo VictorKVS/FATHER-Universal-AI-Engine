@@ -29,6 +29,7 @@ class EvidencePackTests(unittest.TestCase):
         )
         self.assertTrue(pack["evidence_pack_id"].startswith("EVPACK-"))
         self.assertEqual(pack["head_sha"], "abc123")
+        self.assertEqual(pack["pack_status"], "COMPLETE")
 
         with tempfile.TemporaryDirectory() as tmp:
             store = EvidencePackStore(Path(tmp))
@@ -37,6 +38,12 @@ class EvidencePackTests(unittest.TestCase):
             self.assertTrue(first["created"])
             self.assertTrue(second["deduplicated"])
             self.assertEqual(first["path"], second["path"])
+            listed = store.list("P-1")
+            self.assertEqual(len(listed), 1)
+            self.assertEqual(
+                listed[0]["evidence_pack_id"],
+                pack["evidence_pack_id"],
+            )
 
 
 if __name__ == "__main__":
