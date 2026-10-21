@@ -84,3 +84,111 @@ def verify_provider_parity(
         ).encode("utf-8")
     ).hexdigest()
     return payload
+
+
+def verify_ref_inventory(
+    *,
+    project_id: str,
+    source: dict[str, Any],
+    target: dict[str, Any],
+) -> dict[str, Any]:
+    blockers: list[str] = []
+    warnings: list[str] = []
+
+    if not source.get("complete"):
+        blockers.append("SOURCE_REF_INVENTORY_INCOMPLETE")
+    if not target.get("complete"):
+        blockers.append("TARGET_REF_INVENTORY_INCOMPLETE")
+
+    source_default = source.get("default_branch")
+    target_default = target.get("default_branch")
+    if source_default != target_default:
+        blockers.append("DEFAULT_BRANCH_MISMATCH")
+
+    source_branches = dict(source.get("branches") or {})
+    target_branches = dict(target.get("branches") or {})
+    source_tags = dict(source.get("tags") or {})
+    target_tags = dict(target.get("tags") or {})
+
+    missing_branches = sorted(set(source_branches) - set(target_branches))
+    extra_branches = sorted(set(target_branches) - set(source_branches))
+    missing_tags = sorted(set(source_tags) - set(target_tags))
+    extra_tags = sorted(set(target_tags) - set(source_tags))
+
+    branch_sha_mismatch = {
+        name: {
+            "source": source_branches[name],
+            "target": target_branches[name],
+        }
+        for name in sorted(set(source_branches) & set(target_branches))
+        if source_branches[name] != target_branches[name]
+    }
+    tag_sha_mismatch = {
+        name: {
+            "source": source_tags[name],
+            "target": target_tags[name],
+        }
+        for name in sorted(set(source_tags) & set(target_tags))
+        if source_tags[name] != target_tags[name]
+    }
+
+    if missing_branches:
+        blockers.append("TARGET_MISSING_BRANCHES")
+    if extra_branches:
+        blockers.append("TARGET_EXTRA_BRANCHES")
+    if branch_sha_mismatch:
+        blockers.append("BRANCH_SHA_MISMATCH")
+    if missing_tags:
+        blockers.append("TARGET_MISSING_TAGS")
+    if extra_tags:
+        blockers.append("TARGET_EXTRA_TAGS")
+    if tag_sha_mismatch:
+        blockers.append("TAG_SHA_MISMATCH")
+
+    for item in source.get("limitations") or []:
+        warnings.append(f"SOURCE:{item}")
+    for item in target.get("limitations") or []:
+        warnings.append(f"TARGET:{item}")
+
+    state = "PASS" if not blockers else "FAIL"
+    payload = {
+        "schema_version": "father.provider_ref_parity.v0.1",
+        "project_id": project_id,
+        "source_provider": source.get("provider"),
+        "target_provider": target.get("provider"),
+        "source_repository": source.get("repository"),
+        "target_repository": target.get("repository"),
+        "state": state,
+        "blockers": blockers,
+        "warnings": warnings,
+        "default_branch": {
+            "source": source_default,
+            "target": target_default,
+            "match": source_default == target_default,
+        },
+        "counts": {
+            "source_branches": len(source_branches),
+            "target_branches": len(target_branches),
+            "source_tags": len(source_tags),
+            "target_tags": len(target_tags),
+        },
+        "differences": {
+            "missing_branches": missing_branches,
+            "extra_branches": extra_branches,
+            "branch_sha_mismatch": branch_sha_mismatch,
+            "missing_tags": missing_tags,
+            "extra_tags": extra_tags,
+            "tag_sha_mismatch": tag_sha_mismatch,
+        },
+    }
+    digest = hashlib.sha256(
+        json.dumps(
+            payload,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
+    payload["report_id"] = f"REFPARITY-{digest[:16].upper()}"
+    payload["payload_sha256"] = digest
+    return payload

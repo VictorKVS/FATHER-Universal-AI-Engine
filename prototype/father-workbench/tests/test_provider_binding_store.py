@@ -8,7 +8,61 @@ from provider_binding_store import (
     BindingConflictError,
     ProviderBindingStore,
 )
-from migration_verifier import verify_provider_parity
+from migration_verifier import verify_provider_parity, verify_ref_inventory
+
+
+class RefParityTests(unittest.TestCase):
+    def test_complete_equal_inventory_passes(self) -> None:
+        report = verify_ref_inventory(
+            project_id="P-1",
+            source={
+                "provider": "github",
+                "repository": "owner/repo",
+                "default_branch": "main",
+                "branches": {"main": "a", "feature/x": "b"},
+                "tags": {"v1": "a"},
+                "complete": True,
+                "limitations": [],
+            },
+            target={
+                "provider": "gitlab",
+                "repository": "group/repo",
+                "default_branch": "main",
+                "branches": {"main": "a", "feature/x": "b"},
+                "tags": {"v1": "a"},
+                "complete": True,
+                "limitations": [],
+            },
+        )
+        self.assertEqual(report["state"], "PASS")
+        self.assertEqual(report["blockers"], [])
+
+    def test_incomplete_or_mismatched_inventory_fails(self) -> None:
+        report = verify_ref_inventory(
+            project_id="P-1",
+            source={
+                "provider": "github",
+                "repository": "owner/repo",
+                "default_branch": "main",
+                "branches": {"main": "a"},
+                "tags": {"v1": "a"},
+                "complete": True,
+                "limitations": [],
+            },
+            target={
+                "provider": "sourcecraft",
+                "repository": "group/repo",
+                "default_branch": "main",
+                "branches": {"main": "b"},
+                "tags": {},
+                "complete": False,
+                "limitations": ["TAG_INVENTORY_API_NOT_VERIFIED"],
+            },
+        )
+        self.assertEqual(report["state"], "FAIL")
+        self.assertIn("TARGET_REF_INVENTORY_INCOMPLETE", report["blockers"])
+        self.assertIn("BRANCH_SHA_MISMATCH", report["blockers"])
+        self.assertIn("TARGET_MISSING_TAGS", report["blockers"])
 
 
 class ProviderBindingStoreTests(unittest.TestCase):
