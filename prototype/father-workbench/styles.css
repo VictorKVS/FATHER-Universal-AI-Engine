@@ -30,3 +30,6 @@ main{padding:27px 32px 60px;overflow:hidden}.top,.hero,.sectionTitle,.panelHead{
 .providerCaps{display:flex;flex-wrap:wrap;gap:4px;margin-top:9px}
 .providerCaps span{font-size:6px;color:#a9bdc9;border:1px solid #223847aa;border-radius:999px;padding:2px 5px}
 .providerRole{margin-top:8px;color:var(--cyan);font-size:7px;letter-spacing:.08em}
+
+.providerAction{margin-top:9px;width:100%;border:1px solid #2b4657;background:#0b1b25;color:#dceaf2;border-radius:7px;padding:7px;font-size:8px;cursor:pointer}
+.providerAction:hover{border-color:#56d9ff66;background:#102630}

@@ -5,11 +5,13 @@ const fallbackGit={snapshot_kind:"FALLBACK",repository:"",default_branch:"main",
 let model={
   registry:fallbackRegistry,
   providers:fallbackProviders,
+  providerRuntime:{providers:[]},
   git:fallbackGit,
   stageStates:{},
   liveStates:{},
   evidenceStates:{},
-  manufacturingEvents:{}
+  manufacturingEvents:{},
+  migrationPlans:{}
 };
 let selectedProject=null;
 let selectedStage=null;
@@ -56,6 +58,15 @@ function branchState(project){
 
 function providerById(id){
   return (model.providers.providers||[]).find((item)=>item.id===id)||null;
+}
+
+function providerRuntimeById(id){
+  return (model.providerRuntime.providers||[]).find((item)=>item.id===id)||null;
+}
+
+function providerSupportsAction(id,action){
+  const provider=providerById(id);
+  return (provider?.write_capabilities||[]).includes(action);
 }
 
 function stageById(projectId,stageId){
@@ -113,6 +124,10 @@ async function load(){
   model.providers=await readFirst(
     ["/api/providers","../../config/dev_platform/providers.json"],
     fallbackProviders
+  );
+  model.providerRuntime=await readFirst(
+    ["/api/providers/runtime"],
+    {providers:[]}
   );
   model.git=await readFirst(
     ["/api/git-snapshot","../../docs/git/current_workspace.snapshot.json"],
@@ -445,17 +460,18 @@ function renderScmActions(project,state,branch){
     !branch||
     branch.relation_to_main==="DIVERGED";
 
+  const providerId=project.dev_platform?.primary_provider||"github";
   const actions=[
-    ["Create branch",false,"SCM.CREATE_BRANCH"],
-    ["Open PR / MR",false,"SCM.OPEN_CHANGE_REQUEST"],
-    ["Request review",false,"SCM.REQUEST_REVIEW"],
-    ["Run checks",false,"SCM.TRIGGER_PIPELINE"],
-    ["Release draft",false,"SCM.CREATE_RELEASE_DRAFT"],
-    ["Add mirror",false,"PROVIDER.ADD_MIRROR"],
-    ["Migrate",false,"PROVIDER.MIGRATE_REPOSITORY"],
-    ["Verify migration",false,"PROVIDER.VERIFY_MIGRATION"],
+    ["Create branch",!providerSupportsAction(providerId,"SCM.CREATE_BRANCH"),"SCM.CREATE_BRANCH"],
+    ["Open PR / MR",!providerSupportsAction(providerId,"SCM.OPEN_CHANGE_REQUEST"),"SCM.OPEN_CHANGE_REQUEST"],
+    ["Request review",true,"SCM.REQUEST_REVIEW"],
+    ["Run checks",true,"SCM.TRIGGER_PIPELINE"],
+    ["Release draft",true,"SCM.CREATE_RELEASE_DRAFT"],
+    ["Add mirror",true,"PROVIDER.ADD_MIRROR"],
+    ["Migrate",true,"PROVIDER.MIGRATE_REPOSITORY"],
+    ["Verify migration",true,"PROVIDER.VERIFY_MIGRATION"],
     ["Switch primary",true,"PROVIDER.SWITCH_PRIMARY"],
-    ["Merge",mergeBlocked,"SCM.MERGE_CHANGE_REQUEST"]
+    ["Merge",true,"SCM.MERGE_CHANGE_REQUEST"]
   ];
 
   byId("scmActions").innerHTML=actions.map((item)=>
@@ -527,8 +543,13 @@ function renderScmActions(project,state,branch){
         );
         if(!baseRef)return;
 
+        const providerConfig=providerById(
+          project.dev_platform?.primary_provider||"github"
+        );
+        const draftSupported=providerConfig?.draft_change_request_supported!==false;
         approved=window.confirm(
-          "Open draft change request from '"+project.branch+"' to '"+baseRef+"'?"
+          "Open "+(draftSupported?"draft ":"")+"change request from '"+
+          project.branch+"' to '"+baseRef+"'?"
         );
         if(!approved)return;
 
@@ -536,9 +557,11 @@ function renderScmActions(project,state,branch){
           title,
           head_ref:project.branch,
           base_ref:baseRef,
-          draft:true
+          draft:draftSupported
         };
-        result.textContent="Executing audited change request creation…";
+        result.textContent=draftSupported
+          ?"Executing audited draft change request creation…"
+          :"Executing audited change request creation…";
       }else{
         return;
       }
@@ -567,6 +590,32 @@ function renderScmActions(project,state,branch){
       }
     };
   });
+}
+
+async function planMigration(projectId,targetProvider){
+  try{
+    const response=await fetch("/api/migrations/plan",{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({
+        project_id:projectId,
+        target_provider:targetProvider
+      })
+    });
+    if(response.ok)return await response.json();
+    const error=await response.json().catch(()=>({}));
+    return{
+      plan_id:"MIGPLAN-ERROR-"+Date.now(),
+      state:"BLOCKED",
+      blockers:[error.error||("HTTP_"+response.status)]
+    };
+  }catch(_error){
+    return{
+      plan_id:"MIGPLAN-ERROR-"+Date.now(),
+      state:"BLOCKED",
+      blockers:["CONTROL_PLANE_API_UNAVAILABLE"]
+    };
+  }
 }
 
 async function executeProviderAction(projectId,action,params){
@@ -679,26 +728,57 @@ function renderProviderMatrix(){
   const dev=project.dev_platform||{};
   const primary=dev.primary_provider||"github";
   const targets=new Set(dev.migration_targets||[]);
-  byId("providerMatrix").innerHTML=(model.providers.providers||[]).map((provider)=>{
+  const host=byId("providerMatrix");
+
+  host.innerHTML=(model.providers.providers||[]).map((provider)=>{
+    const runtime=providerRuntimeById(provider.id);
     const role=provider.id===primary
       ?"PRIMARY"
       :(targets.has(provider.id)?"MIGRATION TARGET":"AVAILABLE");
+    const writes=(provider.write_capabilities||[]).map((cap)=>
+      '<span>'+esc(cap.replace("SCM.",""))+'</span>'
+    ).join("");
+    const canPlan=provider.id!==primary && targets.has(provider.id);
     return '<div class="providerCard '+(provider.id===primary?"primary":"")+'">'+
       '<div class="providerCardHead"><h4>'+esc(provider.name)+'</h4>'+
-      '<span class="pill '+(provider.status==="CONNECTED"?"PASS":"DRAFT")+'">'+
-      esc(provider.status)+'</span></div>'+
-      '<small>adapter: '+esc(provider.adapter_status||"TBD")+'</small>'+
-      '<div class="providerCaps">'+(provider.capabilities||[]).slice(0,5).map((cap)=>
-        '<span>'+esc(cap)+'</span>'
-      ).join("")+'</div>'+
-      '<div class="providerRole">'+role+'</div></div>';
+      '<span class="pill '+(runtime?.adapter_loaded?"PASS":"DRAFT")+'">'+
+      esc(provider.adapter_status||"TBD")+'</span></div>'+
+      '<small>credential: '+esc(runtime?.credential_configured?"CONFIGURED":"NOT CONFIGURED / NOT REQUIRED FOR PUBLIC READ")+'</small>'+
+      '<div class="providerCaps">'+
+        (provider.capabilities||[]).slice(0,4).map((cap)=>'<span>'+esc(cap)+'</span>').join("")+
+        writes+
+      '</div>'+
+      '<div class="providerRole">'+role+'</div>'+
+      (canPlan
+        ?'<button class="providerAction" data-provider="'+esc(provider.id)+'">Plan migration</button>'
+        :'')+
+      '</div>';
   }).join("");
+
+  host.querySelectorAll(".providerAction").forEach((button)=>{
+    button.onclick=async()=>{
+      const target=button.dataset.provider;
+      const result=byId("actionResult");
+      result.textContent="Planning migration to "+target+"…";
+      result.className="actionResult";
+      const plan=await planMigration(project.project_id,target);
+      model.migrationPlans[target]=plan;
+      result.textContent=
+        plan.plan_id+" · "+plan.source_provider+" → "+plan.target_provider+
+        " · "+plan.state+
+        (plan.blockers?.length?" · blockers: "+plan.blockers.join(", "):"");
+      result.className="actionResult "+(plan.state==="READY"?"ok":"block");
+      await loadRuntimeHistory(project);
+      renderInspector(stageState(project.project_id));
+    };
+  });
 }
 
 byId("refresh").onclick=async()=>{
   model.liveStates={};
   model.evidenceStates={};
   model.manufacturingEvents={};
+  model.migrationPlans={};
   await load();
 };
 load();
