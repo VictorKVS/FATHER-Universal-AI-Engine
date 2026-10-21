@@ -17,6 +17,8 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urlparse
 
+from providers.github_adapter import GitHubAdapter, ProviderError
+
 APP_DIR = Path(__file__).resolve().parent
 REPO_ROOT = APP_DIR.parents[1]
 PROJECTS_FILE = REPO_ROOT / "projects" / "registry.json"
@@ -91,6 +93,20 @@ def stage_by_id(project: dict[str, Any], stage_id: str) -> dict[str, Any] | None
         if stage.get("id") == stage_id:
             return stage
     return None
+
+
+def live_provider_state(project: dict[str, Any]) -> dict[str, Any]:
+    dev_platform = project.get("dev_platform") or {}
+    provider = dev_platform.get("primary_provider")
+    if provider != "github":
+        raise NotImplementedError(f"Provider adapter not implemented: {provider}")
+
+    repository = dev_platform.get("repository") or project.get("repository")
+    branch = dev_platform.get("branch") or project.get("branch")
+    if not repository or not branch:
+        raise ValueError("Project has no repository/branch binding")
+
+    return GitHubAdapter().live_state(str(repository), str(branch))
 
 
 def plan_action(project_id: str, action: str) -> dict[str, Any]:
@@ -197,6 +213,7 @@ class FatherHandler(BaseHTTPRequestHandler):
                         "version": "0.2",
                         "provider_mutations": False,
                         "stage_state_api": True,
+                        "live_provider_read": ["github"],
                     }
                 )
                 return
@@ -250,6 +267,30 @@ class FatherHandler(BaseHTTPRequestHandler):
                             "stage": stage,
                         }
                     )
+                    return
+
+                if (
+                    len(parts) == 5
+                    and parts[3] == "dev-platform"
+                    and parts[4] == "live"
+                ):
+                    try:
+                        self._json(
+                            {
+                                "project_id": project_id,
+                                "live": live_provider_state(project),
+                            }
+                        )
+                    except NotImplementedError:
+                        self._error_json(
+                            HTTPStatus.NOT_IMPLEMENTED,
+                            "PROVIDER_ADAPTER_NOT_IMPLEMENTED",
+                        )
+                    except ProviderError:
+                        self._error_json(
+                            HTTPStatus.BAD_GATEWAY,
+                            "PROVIDER_READ_FAILED",
+                        )
                     return
 
                 self._error_json(HTTPStatus.NOT_FOUND, "ENDPOINT_NOT_FOUND")
