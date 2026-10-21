@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -92,6 +93,10 @@ class ProjectMemoryStore:
             raise ValueError("Only DRAFT Project Memory can be persisted")
 
         current, current_etag = self.read(project_id)
+        if current and current.get("status") == "APPROVED":
+            raise ValueError(
+                "Approved Project Memory cannot be overwritten by DRAFT"
+            )
         if current_etag != expected_etag:
             if not (current is None and expected_etag is None):
                 raise ProjectMemoryConflictError(
@@ -109,3 +114,88 @@ class ProjectMemoryStore:
         if written != memory or not etag:
             raise OSError("Project Memory verification failed")
         return etag
+
+    def submit_review(
+        self,
+        *,
+        project_id: str,
+        role: str,
+        decision: str,
+        reviewer: str,
+        rationale: str,
+        expected_etag: str,
+    ) -> tuple[dict[str, Any], str]:
+        memory, current_etag = self.read(project_id)
+        if memory is None or current_etag is None:
+            raise ValueError("Project Memory draft not found")
+        if current_etag != expected_etag:
+            raise ProjectMemoryConflictError(
+                "Project Memory changed"
+            )
+
+        role = role.strip().upper()
+        decision = decision.strip().upper()
+        reviewer = reviewer.strip()
+        rationale = rationale.strip()
+        if role not in {"OWNER", "SPECIALIST"}:
+            raise ValueError("INVALID_PROJECT_MEMORY_REVIEW_ROLE")
+        if decision not in {"APPROVE", "HOLD", "REJECT"}:
+            raise ValueError("INVALID_PROJECT_MEMORY_REVIEW_DECISION")
+        if not reviewer:
+            raise ValueError("PROJECT_MEMORY_REVIEWER_REQUIRED")
+        if len(rationale) < 20:
+            raise ValueError(
+                "PROJECT_MEMORY_REVIEW_RATIONALE_TOO_SHORT"
+            )
+        if memory.get("status") not in {"DRAFT", "IN_REVIEW"}:
+            raise ValueError("PROJECT_MEMORY_NOT_REVIEWABLE")
+
+        reviews = list(memory.get("reviews") or [])
+        reviews.append(
+            {
+                "role": role,
+                "decision": decision,
+                "reviewer": reviewer,
+                "rationale": rationale,
+                "reviewed_at": datetime.now(
+                    timezone.utc
+                ).isoformat(),
+            }
+        )
+        memory["reviews"] = reviews
+
+        latest: dict[str, dict[str, Any]] = {}
+        for item in reviews:
+            latest[str(item.get("role") or "")] = item
+
+        owner = latest.get("OWNER")
+        specialist = latest.get("SPECIALIST")
+        if (
+            owner
+            and specialist
+            and owner.get("decision") == "APPROVE"
+            and specialist.get("decision") == "APPROVE"
+        ):
+            memory["status"] = "APPROVED"
+            memory["approved_at"] = datetime.now(
+                timezone.utc
+            ).isoformat()
+            memory["approved_version"] = "1"
+            memory["approved_by"] = {
+                "owner": owner.get("reviewer"),
+                "specialist": specialist.get("reviewer"),
+            }
+        else:
+            memory["status"] = "IN_REVIEW"
+
+        json_content = (
+            json.dumps(memory, ensure_ascii=False, indent=2)
+            + "\n"
+        )
+        md_content = render_project_memory_markdown(memory)
+        self._atomic_text(self.json_path(project_id), json_content)
+        self._atomic_text(self.md_path(project_id), md_content)
+        written, new_etag = self.read(project_id)
+        if written != memory or not new_etag:
+            raise OSError("Project Memory review verification failed")
+        return memory, new_etag
