@@ -97,6 +97,23 @@ class MigrationControlPlaneTests(unittest.TestCase):
                         "limitations": [],
                     }
 
+                def access_policy(self, repository, branch):
+                    return {
+                        "provider": self.provider,
+                        "repository": repository,
+                        "branch": branch,
+                        "complete": True,
+                        "protected": True,
+                        "force_push_allowed": False,
+                        "deletion_allowed": False,
+                        "review_required": False,
+                        "code_owner_review_required": False,
+                        "required_status_checks": False,
+                        "admin_enforcement": False,
+                        "direct_push_restricted": True,
+                        "limitations": [],
+                    }
+
             def adapter_for(provider):
                 repository = (
                     "owner/repo"
@@ -145,11 +162,17 @@ class MigrationControlPlaneTests(unittest.TestCase):
             self.assertTrue(
                 verified["verification"]["checks"]["head_sha_parity"]
             )
-            self.assertEqual(len(evidence), 2)
+            self.assertEqual(len(evidence), 3)
             self.assertEqual(
                 {item["evidence_type"] for item in evidence},
-                {"MIGRATION_VERIFICATION", "REF_PARITY_REPORT"},
+                {
+                    "MIGRATION_VERIFICATION",
+                    "REF_PARITY_REPORT",
+                    "ACCESS_AND_BRANCH_POLICY_REPORT",
+                },
             )
+            self.assertTrue(verified["access_policy_not_weaker"])
+            self.assertTrue(verified["security_review_required"])
             self.assertTrue(
                 any(
                     event["event_type"] == "MIGRATION_REF_PARITY_PASSED"
@@ -201,6 +224,23 @@ class MigrationControlPlaneTests(unittest.TestCase):
                         "branches": {"main": sha},
                         "tags": {},
                         "complete": True,
+                        "limitations": [],
+                    }
+
+                def access_policy(self, repository, branch):
+                    return {
+                        "provider": self.provider,
+                        "repository": repository,
+                        "branch": branch,
+                        "complete": True,
+                        "protected": True,
+                        "force_push_allowed": False,
+                        "deletion_allowed": False,
+                        "review_required": False,
+                        "code_owner_review_required": False,
+                        "required_status_checks": False,
+                        "admin_enforcement": False,
+                        "direct_push_restricted": True,
                         "limitations": [],
                     }
 
