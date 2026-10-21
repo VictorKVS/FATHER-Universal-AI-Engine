@@ -182,6 +182,9 @@ Lessons, patterns, anti-patterns, defects, fixes, reuse records.
 ## History
 Immutable event stream.
 
+## Git Workspace
+Repository, branch graph, commits, PR/review state, DevSecOps/Security checks, evidence freshness and merge readiness.
+
 ---
 
 # 6. Project ↔ Manufacturing Knowledge Base
@@ -446,3 +449,12 @@ Each project workspace should expose a **Git Protocol** summary:
 Clicking a status should open the exact evidence/report that supports it.
 
 See `docs/16_FATHER_GITHUB_EVIDENCE_PROTOCOL.md`.
+
+
+---
+
+# Git Workspace integration
+
+Every project links its current stage to the exact Git repository/branch/commit used for implementation and evidence.
+
+The project page embeds a Git Workspace panel. The full cross-project repository/branch map is defined in `docs/18_FATHER_GIT_WORKSPACE.md`.
