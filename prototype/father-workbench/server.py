@@ -214,15 +214,17 @@ def execute_action(
 
     dev_platform = project.get("dev_platform") or {}
     provider = dev_platform.get("primary_provider")
-    if provider != "github":
+    if provider == "github":
+        adapter = GitHubAdapter()
+    elif provider == "gitlab":
+        adapter = GitLabAdapter()
+    else:
         return {
             **plan,
             "status": "BLOCKED",
             "allowed": False,
             "reasons": ["PROVIDER_WRITE_ADAPTER_NOT_IMPLEMENTED"],
         }
-
-    adapter = GitHubAdapter()
     if not adapter.can_write:
         return {
             **plan,
@@ -516,10 +518,16 @@ class FatherHandler(BaseHTTPRequestHandler):
                         "status": "ok",
                         "service": "father-project-workbench",
                         "version": "0.2",
-                        "provider_mutations": [
-                            "SCM.CREATE_BRANCH",
-                            "SCM.OPEN_CHANGE_REQUEST",
-                        ],
+                        "provider_mutations": {
+                            "github": [
+                                "SCM.CREATE_BRANCH",
+                                "SCM.OPEN_CHANGE_REQUEST",
+                            ],
+                            "gitlab": [
+                                "SCM.CREATE_BRANCH",
+                                "SCM.OPEN_CHANGE_REQUEST",
+                            ],
+                        },
                         "stage_state_api": True,
                         "live_provider_read": ["github", "gitlab"],
                         "evidence_store": True,

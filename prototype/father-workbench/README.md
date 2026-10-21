@@ -89,3 +89,20 @@ APIs:
 - `GET /api/projects/<project_id>/manufacturing-events`
 
 A live provider read captures/deduplicates a provider-state snapshot. Successful SCM mutations produce both audit/manufacturing events and an action-result evidence record.
+
+
+## Optional GitLab connection
+
+GitLab.com is the default GitLab API base URL. For self-managed GitLab set both variables server-side:
+
+```powershell
+$env:FATHER_GITLAB_URL = "https://gitlab.example.com"
+$env:FATHER_GITLAB_TOKEN = "<minimum-scope token from your secure credential store>"
+```
+
+The current GitLab adapter supports live read plus the same limited audited write contract as GitHub:
+
+- `SCM.CREATE_BRANCH`
+- `SCM.OPEN_CHANGE_REQUEST`
+
+Merge, delete, release publish and permission/secret changes remain disabled.

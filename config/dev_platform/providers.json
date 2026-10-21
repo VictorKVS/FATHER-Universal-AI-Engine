@@ -28,7 +28,7 @@
       "name": "GitLab",
       "family": "GITLAB",
       "status": "AVAILABLE",
-      "adapter_status": "IMPLEMENTED_READ_ONLY",
+      "adapter_status": "IMPLEMENTED_READ_WRITE_LIMITED",
       "capabilities": [
         "REPOSITORIES",
         "BRANCHES",
@@ -38,7 +38,10 @@
         "PIPELINES",
         "PACKAGES"
       ],
-      "write_capabilities": []
+      "write_capabilities": [
+        "SCM.CREATE_BRANCH",
+        "SCM.OPEN_CHANGE_REQUEST"
+      ]
     },
     {
       "id": "gitverse",
