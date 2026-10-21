@@ -194,6 +194,56 @@ class GitVerseAdapter:
             "updated_at": value.get("updated_at") or value.get("stopped"),
         }
 
+    def ref_inventory(self, repository: str) -> dict[str, Any]:
+        owner, name = self.split_repository(repository)
+        root = f"/repos/{quote(owner, safe='')}/{quote(name, safe='')}"
+        repo = self._request(root)
+        branches: dict[str, str] = {}
+        tags: dict[str, str] = {}
+        limitations: list[str] = []
+
+        for page in range(1, 101):
+            data = self._request(
+                f"{root}/branches",
+                {"per_page": "100", "page": str(page)},
+            )
+            items = data if isinstance(data, list) else (
+                data.get("branches", []) if isinstance(data, dict) else []
+            )
+            for item in items:
+                sha = self._head_sha(item)
+                if item.get("name") and sha:
+                    branches[str(item["name"])] = str(sha)
+            total = data.get("total_count") if isinstance(data, dict) else None
+            if len(items) < 100 or (
+                isinstance(total, int) and page * 100 >= total
+            ):
+                break
+        else:
+            limitations.append("BRANCH_PAGINATION_LIMIT_REACHED")
+
+        data = self._request(f"{root}/git/matching-refs/tags")
+        items = data if isinstance(data, list) else (
+            data.get("refs", []) if isinstance(data, dict) else []
+        )
+        for item in items:
+            ref = str(item.get("ref") or "")
+            sha = (item.get("object") or {}).get("sha")
+            if ref.startswith("refs/tags/") and sha:
+                tags[ref.removeprefix("refs/tags/")] = str(sha)
+        if isinstance(data, dict) and data.get("truncated"):
+            limitations.append("TAG_INVENTORY_TRUNCATED")
+
+        return {
+            "provider": self.provider_id,
+            "repository": repo.get("full_name", repository),
+            "default_branch": repo.get("default_branch"),
+            "branches": branches,
+            "tags": tags,
+            "complete": not limitations,
+            "limitations": limitations,
+        }
+
     def live_state(
         self,
         repository: str,

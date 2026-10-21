@@ -143,6 +143,45 @@ class SourceCraftAdapter:
             "updated_at": dates.get("updated_at") or value.get("updated_at"),
         }
 
+    def ref_inventory(self, repository: str) -> dict[str, Any]:
+        org, repo_name = self.split_repository(repository)
+        root = f"/repos/{quote(org, safe='')}/{quote(repo_name, safe='')}"
+        repo = self._request(root)
+        branches: dict[str, str] = {}
+        limitations = ["TAG_INVENTORY_API_NOT_VERIFIED"]
+
+        for page in range(1, 101):
+            data = self._request(
+                f"{root}/branches",
+                {
+                    "page_size": "100",
+                    "page": str(page),
+                },
+            )
+            items = data.get("branches", []) if isinstance(data, dict) else []
+            for item in items:
+                sha = self._branch_sha(item)
+                if item.get("name") and sha:
+                    branches[str(item["name"])] = str(sha)
+            next_page = data.get("next_page") if isinstance(data, dict) else None
+            if len(items) < 100 and not next_page:
+                break
+        else:
+            limitations.append("BRANCH_PAGINATION_LIMIT_REACHED")
+
+        return {
+            "provider": self.provider_id,
+            "repository": (
+                f"{(repo.get('organization') or {}).get('slug', org)}/"
+                f"{repo.get('slug', repo_name)}"
+            ),
+            "default_branch": repo.get("default_branch"),
+            "branches": branches,
+            "tags": {},
+            "complete": False,
+            "limitations": limitations,
+        }
+
     def live_state(
         self,
         repository: str,
