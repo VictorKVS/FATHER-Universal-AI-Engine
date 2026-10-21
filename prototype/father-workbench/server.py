@@ -753,6 +753,107 @@ def write_artifact_document(
     }
 
 
+def start_stage(
+    project_id: str,
+    stage_id: str,
+    rationale: str,
+    started_by: str,
+    expected_etag: str,
+) -> dict[str, Any]:
+    project = project_by_id(project_id)
+    if not project:
+        return {
+            "status": "BLOCKED",
+            "errors": ["PROJECT_NOT_FOUND"],
+        }
+    if not rationale.strip():
+        return {
+            "status": "BLOCKED",
+            "errors": ["RATIONALE_REQUIRED"],
+        }
+
+    state, current_etag = PROJECT_STATE_STORE.read(project)
+    if current_etag != expected_etag:
+        return {
+            "status": "CONFLICT",
+            "errors": ["STATE_ETAG_CONFLICT"],
+            "current_etag": current_etag,
+        }
+
+    stage = find_stage(state, stage_id)
+    if not stage:
+        return {
+            "status": "BLOCKED",
+            "errors": ["STAGE_NOT_FOUND"],
+            "current_etag": current_etag,
+        }
+    if stage.get("status") != "READY":
+        return {
+            "status": "BLOCKED",
+            "errors": ["STAGE_NOT_READY"],
+            "current_status": stage.get("status"),
+            "current_etag": current_etag,
+        }
+
+    started_at = datetime.now(timezone.utc).isoformat()
+    stage["status"] = "IN_PROGRESS"
+    stage.setdefault("run_history", []).append(
+        {
+            "event": "STARTED",
+            "started_at": started_at,
+            "started_by": started_by.strip() or "HUMAN",
+            "rationale": rationale.strip(),
+        }
+    )
+
+    try:
+        new_etag = PROJECT_STATE_STORE.write(
+            project,
+            state,
+            current_etag,
+        )
+    except StateConflictError:
+        _state, latest_etag = PROJECT_STATE_STORE.read(project)
+        return {
+            "status": "CONFLICT",
+            "errors": ["STATE_ETAG_CONFLICT"],
+            "current_etag": latest_etag,
+        }
+
+    payload = {
+        "project_id": project_id,
+        "stage_id": stage_id,
+        "started_at": started_at,
+        "started_by": started_by.strip() or "HUMAN",
+        "rationale": rationale.strip(),
+        "previous_etag": current_etag,
+        "new_etag": new_etag,
+    }
+    event = EVIDENCE_STORE.append_manufacturing_event(
+        project_id=project_id,
+        event_type="STAGE_STARTED",
+        source_ref=f"STAGE:{stage_id}",
+        payload=payload,
+    )
+    evidence = EVIDENCE_STORE.store_evidence(
+        project_id=project_id,
+        evidence_type="STAGE_START_DECISION",
+        provider=None,
+        payload=payload,
+        subject_key=f"{stage_id}:START:{new_etag}",
+        refs={"manufacturing_event_id": event["event_id"]},
+    )
+    return {
+        "status": "STARTED",
+        "project_id": project_id,
+        "stage_id": stage_id,
+        "new_etag": new_etag,
+        "evidence": evidence,
+        "manufacturing_event_id": event["event_id"],
+        "git_commit_required": True,
+    }
+
+
 def write_audit_event(event: dict[str, Any]) -> None:
     RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
     with AUDIT_FILE.open("a", encoding="utf-8") as handle:
@@ -1134,6 +1235,7 @@ class FatherHandler(BaseHTTPRequestHandler):
                         "traceability_graph": True,
                         "durable_evidence_pack": True,
                         "safe_document_editor": True,
+                        "explicit_stage_start": True,
                     }
                 )
                 return
@@ -1357,6 +1459,7 @@ class FatherHandler(BaseHTTPRequestHandler):
             "/api/artifacts/upsert",
             "/api/evidence/export",
             "/api/documents/write",
+            "/api/stages/start",
         }:
             self._error_json(HTTPStatus.NOT_FOUND, "ENDPOINT_NOT_FOUND")
             return
@@ -1446,6 +1549,46 @@ class FatherHandler(BaseHTTPRequestHandler):
                 rationale,
                 evidence_refs,
                 decided_by,
+                expected_etag,
+            )
+            if result["status"] == "CONFLICT":
+                self._json(result, HTTPStatus.CONFLICT)
+            elif result["status"] == "BLOCKED":
+                self._json(result, HTTPStatus.BAD_REQUEST)
+            else:
+                self._json(result)
+            return
+
+        if path == "/api/stages/start":
+            if self.headers.get("X-FATHER-Action") != "confirm":
+                self._error_json(
+                    HTTPStatus.FORBIDDEN,
+                    "EXPLICIT_ACTION_HEADER_REQUIRED",
+                )
+                return
+            if body.get("confirm") is not True:
+                self._error_json(
+                    HTTPStatus.FORBIDDEN,
+                    "EXPLICIT_CONFIRMATION_REQUIRED",
+                )
+                return
+
+            stage_id = str(body.get("stage_id", "")).strip()
+            rationale = str(body.get("rationale", "")).strip()
+            expected_etag = str(body.get("expected_etag", "")).strip()
+            started_by = str(body.get("started_by", "HUMAN")).strip()
+            if not stage_id or not expected_etag:
+                self._error_json(
+                    HTTPStatus.BAD_REQUEST,
+                    "INVALID_STAGE_START_REQUEST",
+                )
+                return
+
+            result = start_stage(
+                project_id,
+                stage_id,
+                rationale,
+                started_by,
                 expected_etag,
             )
             if result["status"] == "CONFLICT":
