@@ -289,13 +289,50 @@
       "owner": "Architect",
       "gate": "NOT_GATE_PROVEN",
       "documents": {
-        "done": 6,
+        "done": 0,
         "total": 6,
-        "items": []
+        "items": [
+          {
+            "id": "ARCH-REGISTRY",
+            "title": "FATHER Project Registry",
+            "status": "LEGACY_BASELINE",
+            "source_ref": "docs/14_FATHER_PROJECT_REGISTRY.md"
+          },
+          {
+            "id": "ARCH-MEMORY",
+            "title": "FATHER Project Memory",
+            "status": "LEGACY_BASELINE",
+            "source_ref": "docs/15_FATHER_PROJECT_MEMORY.md"
+          },
+          {
+            "id": "ARCH-GIT",
+            "title": "FATHER Git Workspace",
+            "status": "LEGACY_BASELINE",
+            "source_ref": "docs/18_FATHER_GIT_WORKSPACE.md"
+          },
+          {
+            "id": "ARCH-WORLD",
+            "title": "World Practice IDP and DevSecOps Review",
+            "status": "LEGACY_BASELINE",
+            "source_ref": "docs/research/19_WORLD_PRACTICE_IDP_DEVSECOPS.md"
+          },
+          {
+            "id": "ARCH-SCM",
+            "title": "FATHER SCM Control Plane",
+            "status": "LEGACY_BASELINE",
+            "source_ref": "docs/20_FATHER_SCM_CONTROL_PLANE.md"
+          },
+          {
+            "id": "ARCH-DEVPLATFORM",
+            "title": "FATHER Dev Platform Environment",
+            "status": "LEGACY_BASELINE",
+            "source_ref": "docs/21_FATHER_DEV_PLATFORM_ENVIRONMENT.md"
+          }
+        ]
       },
       "open_risks": 1,
       "cost_impact": "—",
-      "analysis": "Архитектурные документы существуют, но были созданы до нового gate-процесса.",
+      "analysis": "Архитектурные документы существуют и теперь зарегистрированы как редактируемые artifacts, но были созданы до нового gate-процесса. LEGACY_BASELINE не считается PASS.",
       "decisions": [
         "Provider-neutral Dev Platform layer.",
         "Project identity independent from SCM provider."
