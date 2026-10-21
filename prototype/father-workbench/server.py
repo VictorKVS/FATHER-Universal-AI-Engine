@@ -1438,6 +1438,39 @@ def switch_primary_provider(
         if post_cutover_status == "PASS"
         else "APPLIED_POST_CUTOVER_DEGRADED"
     )
+    health_evidence_id = str(
+        ((post_cutover.get("evidence") or {}).get("evidence_id"))
+        or ((post_cutover_live_evidence or {}).get("evidence_id"))
+        or ""
+    )
+    health_state_conflict = False
+    try:
+        _health_state, health_etag = (
+            PROVIDER_BINDING_STORE.record_switch_health(
+                project,
+                action_id=action_id,
+                status=post_cutover_status,
+                blockers=list(post_cutover.get("blockers") or []),
+                evidence_id=health_evidence_id,
+                rollback_recommended=bool(
+                    post_cutover.get("rollback_recommended")
+                ),
+                expected_etag=new_etag,
+            )
+        )
+        new_etag = health_etag
+    except (BindingConflictError, ValueError, OSError):
+        health_state_conflict = True
+        post_cutover_status = "DEGRADED"
+        post_cutover = {
+            **post_cutover,
+            "status": "DEGRADED",
+            "blockers": list(post_cutover.get("blockers") or [])
+            + ["SWITCH_HEALTH_STATE_PERSIST_FAILED"],
+            "rollback_recommended": True,
+        }
+        final_status = "APPLIED_POST_CUTOVER_DEGRADED"
+
     final_audit = {
         **payload,
         "status": final_status,
@@ -1445,6 +1478,8 @@ def switch_primary_provider(
         "rollback_recommended": bool(
             post_cutover.get("rollback_recommended")
         ),
+        "switch_health_state_conflict": health_state_conflict,
+        "binding_etag": new_etag,
     }
     write_audit_event(final_audit)
 
@@ -1468,6 +1503,7 @@ def switch_primary_provider(
         "worktree_change": True,
         "git_commit_required": True,
         "rollback_binding_preserved": True,
+        "switch_health_persisted": not health_state_conflict,
     }
 
 
@@ -1643,6 +1679,35 @@ def rollback_primary_provider(
             ),
         },
     )
+
+    rollback_health_persisted = True
+    try:
+        _health_state, health_etag = (
+            PROVIDER_BINDING_STORE.record_switch_health(
+                project,
+                action_id=action_id,
+                status=(
+                    "ROLLBACK_PASS"
+                    if post_status == "PASS"
+                    else "ROLLBACK_DEGRADED"
+                ),
+                blockers=(
+                    []
+                    if post_status == "PASS"
+                    else ["POST_ROLLBACK_LIVE_EVIDENCE_FAILED"]
+                ),
+                evidence_id=str(evidence["evidence_id"]),
+                rollback_recommended=False,
+                expected_etag=new_etag,
+            )
+        )
+        new_etag = health_etag
+    except (BindingConflictError, ValueError, OSError):
+        rollback_health_persisted = False
+        post_status = "DEGRADED"
+        payload["status"] = "ROLLED_BACK_EVIDENCE_DEGRADED"
+        payload["post_rollback_status"] = "DEGRADED"
+
     return {
         "status": payload["status"],
         "project_id": project_id,
@@ -1655,6 +1720,7 @@ def rollback_primary_provider(
         "post_rollback_evidence": live_evidence,
         "post_rollback_status": post_status,
         "manufacturing_event_id": event["event_id"],
+        "rollback_health_persisted": rollback_health_persisted,
         "provider_mutation": False,
         "worktree_change": True,
         "git_commit_required": True,
