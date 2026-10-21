@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urlparse
 
+from artifact_engine import apply_artifact_update, list_artifacts, validate_artifact_update
 from devsecops_state import evaluate_devsecops_state
 from evidence_store import EvidenceStore
 from gate_engine import (
@@ -29,6 +30,7 @@ from gate_engine import (
 from lifecycle_engine import reconcile_project_flow
 from migration_engine import build_migration_plan
 from state_store import ProjectStateStore, StateConflictError
+from traceability_engine import build_traceability_graph
 from providers.base import ProviderError
 from providers.github_adapter import GitHubAdapter
 from providers.gitlab_adapter import GitLabAdapter
@@ -391,6 +393,147 @@ def decide_gate(
         "worktree_change": True,
         "git_commit_required": True,
     }
+
+
+def update_artifact(
+    project_id: str,
+    stage_id: str,
+    artifact_id: str,
+    title: str,
+    status: str,
+    rationale: str,
+    evidence_refs: list[str],
+    decided_by: str,
+    expected_etag: str,
+    source_ref: str | None = None,
+) -> dict[str, Any]:
+    project = project_by_id(project_id)
+    if not project:
+        return {
+            "status": "BLOCKED",
+            "errors": ["PROJECT_NOT_FOUND"],
+        }
+
+    state, current_etag = PROJECT_STATE_STORE.read(project)
+    if current_etag != expected_etag:
+        return {
+            "status": "CONFLICT",
+            "errors": ["STATE_ETAG_CONFLICT"],
+            "current_etag": current_etag,
+        }
+
+    validation = validate_artifact_update(
+        state=state,
+        stage_id=stage_id,
+        artifact_id=artifact_id,
+        title=title,
+        status=status,
+        rationale=rationale,
+        evidence_refs=evidence_refs,
+    )
+    if not validation["valid"]:
+        return {
+            "status": "BLOCKED",
+            "errors": validation["errors"],
+            "current_etag": current_etag,
+        }
+
+    applied = apply_artifact_update(
+        state=state,
+        stage_id=stage_id,
+        artifact_id=artifact_id,
+        title=title,
+        status=status,
+        rationale=rationale,
+        evidence_refs=evidence_refs,
+        decided_by=decided_by,
+        source_ref=source_ref,
+    )
+    updated = applied["state"]
+
+    try:
+        new_etag = PROJECT_STATE_STORE.write(
+            project,
+            updated,
+            current_etag,
+        )
+    except StateConflictError:
+        _state, latest_etag = PROJECT_STATE_STORE.read(project)
+        return {
+            "status": "CONFLICT",
+            "errors": ["STATE_ETAG_CONFLICT"],
+            "current_etag": latest_etag,
+        }
+
+    payload = {
+        "project_id": project_id,
+        "stage_id": stage_id,
+        "artifact_id": artifact_id,
+        "title": title,
+        "previous_status": applied["previous_status"],
+        "status": status.upper().strip(),
+        "rationale": rationale.strip(),
+        "evidence_refs": evidence_refs,
+        "decided_by": decided_by.strip() or "HUMAN",
+        "source_ref": source_ref,
+        "previous_etag": current_etag,
+        "new_etag": new_etag,
+    }
+    event = EVIDENCE_STORE.append_manufacturing_event(
+        project_id=project_id,
+        event_type="ARTIFACT_STATUS_UPDATED",
+        source_ref=f"ARTIFACT:{stage_id}:{artifact_id}",
+        payload=payload,
+    )
+    evidence = EVIDENCE_STORE.store_evidence(
+        project_id=project_id,
+        evidence_type="ARTIFACT_STATUS_DECISION",
+        provider=None,
+        payload=payload,
+        subject_key=f"{stage_id}:{artifact_id}:{new_etag}",
+        refs={
+            "manufacturing_event_id": event["event_id"],
+            "input_evidence_refs": evidence_refs,
+        },
+    )
+
+    latest_state, _latest_etag = PROJECT_STATE_STORE.read(project)
+    gate = evaluate_stage_gate(
+        latest_state,
+        stage_id,
+        read_json(GATE_POLICIES_FILE),
+    )
+    return {
+        "status": "APPLIED",
+        "project_id": project_id,
+        "stage_id": stage_id,
+        "artifact": applied["artifact"],
+        "previous_etag": current_etag,
+        "new_etag": new_etag,
+        "evidence": evidence,
+        "manufacturing_event_id": event["event_id"],
+        "gate_evaluation": gate,
+        "worktree_change": True,
+        "git_commit_required": True,
+    }
+
+
+def project_traceability(project: dict[str, Any]) -> dict[str, Any]:
+    project_id = str(project["project_id"])
+    state = project_stage_state(project)
+    evidence = EVIDENCE_STORE.list_evidence(project_id, limit=200)
+    events = EVIDENCE_STORE.list_manufacturing_events(project_id, limit=200)
+    try:
+        live = live_provider_state(project)
+    except (ProviderError, NotImplementedError, ValueError):
+        live = None
+    return build_traceability_graph(
+        project=project,
+        state=state,
+        evidence=evidence,
+        events=events,
+        live=live,
+    )
 
 
 def write_audit_event(event: dict[str, Any]) -> None:
@@ -770,6 +913,8 @@ class FatherHandler(BaseHTTPRequestHandler):
                         "gate_engine": True,
                         "commit_bound_devsecops": True,
                         "atomic_project_state": True,
+                        "artifact_control": True,
+                        "traceability_graph": True,
                     }
                 )
                 return
@@ -833,6 +978,21 @@ class FatherHandler(BaseHTTPRequestHandler):
                             ),
                         }
                     )
+                    return
+
+                if len(parts) == 4 and parts[3] == "artifacts":
+                    state, etag = PROJECT_STATE_STORE.read(project)
+                    self._json(
+                        {
+                            "project_id": project_id,
+                            "state_etag": etag,
+                            "artifacts": list_artifacts(state),
+                        }
+                    )
+                    return
+
+                if len(parts) == 4 and parts[3] == "traceability":
+                    self._json(project_traceability(project))
                     return
 
                 if len(parts) == 4 and parts[3] == "stages":
@@ -948,6 +1108,7 @@ class FatherHandler(BaseHTTPRequestHandler):
             "/api/migrations/plan",
             "/api/gates/recalculate",
             "/api/gates/decide",
+            "/api/artifacts/upsert",
         }:
             self._error_json(HTTPStatus.NOT_FOUND, "ENDPOINT_NOT_FOUND")
             return
@@ -1038,6 +1199,73 @@ class FatherHandler(BaseHTTPRequestHandler):
                 evidence_refs,
                 decided_by,
                 expected_etag,
+            )
+            if result["status"] == "CONFLICT":
+                self._json(result, HTTPStatus.CONFLICT)
+            elif result["status"] == "BLOCKED":
+                self._json(result, HTTPStatus.BAD_REQUEST)
+            else:
+                self._json(result)
+            return
+
+        if path == "/api/artifacts/upsert":
+            if self.headers.get("X-FATHER-Action") != "confirm":
+                self._error_json(
+                    HTTPStatus.FORBIDDEN,
+                    "EXPLICIT_ACTION_HEADER_REQUIRED",
+                )
+                return
+            if body.get("confirm") is not True:
+                self._error_json(
+                    HTTPStatus.FORBIDDEN,
+                    "EXPLICIT_CONFIRMATION_REQUIRED",
+                )
+                return
+
+            stage_id = str(body.get("stage_id", "")).strip()
+            artifact_id = str(body.get("artifact_id", "")).strip()
+            title = str(body.get("title", "")).strip()
+            status = str(body.get("status", "")).strip()
+            rationale = str(body.get("rationale", "")).strip()
+            expected_etag = str(body.get("expected_etag", "")).strip()
+            decided_by = str(body.get("decided_by", "HUMAN")).strip()
+            source_ref_raw = body.get("source_ref")
+            source_ref = (
+                str(source_ref_raw).strip()
+                if source_ref_raw is not None
+                else None
+            )
+            evidence_refs = body.get("evidence_refs") or []
+
+            if (
+                not stage_id
+                or not artifact_id
+                or not title
+                or not status
+                or not expected_etag
+                or not isinstance(evidence_refs, list)
+            ):
+                self._error_json(
+                    HTTPStatus.BAD_REQUEST,
+                    "INVALID_ARTIFACT_UPDATE_REQUEST",
+                )
+                return
+
+            result = update_artifact(
+                project_id,
+                stage_id,
+                artifact_id,
+                title,
+                status,
+                rationale,
+                [
+                    str(item).strip()
+                    for item in evidence_refs[:50]
+                    if str(item).strip()
+                ],
+                decided_by,
+                expected_etag,
+                source_ref,
             )
             if result["status"] == "CONFLICT":
                 self._json(result, HTTPStatus.CONFLICT)
