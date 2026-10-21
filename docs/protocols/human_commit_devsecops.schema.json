@@ -1,0 +1,43 @@
+{
+  "schema_version": "father.human_commit_devsecops.v0.1",
+  "protocol_id": "FATHER-HUMAN-COMMIT-DEVSECOPS-001",
+  "commit_format": "<type>(<scope>): <human-readable result>",
+  "types": [
+    "feat",
+    "fix",
+    "docs",
+    "sec",
+    "test",
+    "refactor",
+    "chore",
+    "perf",
+    "build",
+    "ci",
+    "ops",
+    "revert"
+  ],
+  "rules": {
+    "one_logical_change_per_commit": true,
+    "concise_subject": true,
+    "meaningful_subject": true,
+    "body_only_when_useful": true,
+    "secrets_in_git": false,
+    "pass_requires_evidence": true,
+    "merge_requires_required_review": true,
+    "silent_scope_change": false,
+    "unrelated_user_work_must_not_be_reset": true
+  },
+  "workflow": [
+    "TASK",
+    "FEATURE_BRANCH",
+    "CHANGE",
+    "LOCAL_VALIDATION",
+    "SECURITY_QUALITY_CHECKS",
+    "COMMIT",
+    "PUSH",
+    "REVIEW_IF_REQUIRED",
+    "CI_EVIDENCE",
+    "GATE",
+    "AUTHORIZED_MERGE"
+  ]
+}
