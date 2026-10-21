@@ -21,7 +21,7 @@
     },
     {
       "branch": "feature/father-project-registry-v01",
-      "linked_project": "FATHER-PLATFORM-PROJECT-REGISTRY",
+      "linked_project": "FATHER-PLATFORM-001",
       "relation_to_main": "AHEAD",
       "ahead_by": 17,
       "behind_by": 0,

@@ -1,0 +1,379 @@
+{
+  "schema_version": "father.project_stage_state.v0.1",
+  "project_id": "FATHER-PLATFORM-001",
+  "projection_kind": "CURRENT_STATE",
+  "source_of_truth_note": "Bootstrap projection. Existing implementation predates the canonical Pre-Design gate and therefore is not represented as having passed missing gates.",
+  "description": "Рабочая среда FATHER: Project Registry, production conveyor, Dev Platform providers, evidence-driven DevSecOps state and local control plane.",
+  "current_stage": "DEV",
+  "document_summary": {
+    "done": 9,
+    "total": 36
+  },
+  "evidence_status": "PARTIAL_LIVE",
+  "scorecards": {
+    "Documents": 35,
+    "Evidence": 45,
+    "Security": 30,
+    "DevSecOps": 55
+  },
+  "checks": [
+    {
+      "name": "Baseline CI",
+      "status": "PASS_WITH_PRIOR_HEAD",
+      "evidence_ref": "GitHub Actions run 39553954082 @ 1f0e590a"
+    },
+    {
+      "name": "Current HEAD CI",
+      "status": "RUNNING"
+    },
+    {
+      "name": "Unit tests",
+      "status": "PASS_WITH_PRIOR_HEAD"
+    },
+    {
+      "name": "Integration tests",
+      "status": "NOT_RUN"
+    },
+    {
+      "name": "SAST",
+      "status": "NOT_RUN"
+    },
+    {
+      "name": "SCA",
+      "status": "NOT_RUN"
+    },
+    {
+      "name": "Dedicated secret scan",
+      "status": "NOT_RUN"
+    },
+    {
+      "name": "Baseline secret hygiene",
+      "status": "PASS_WITH_PRIOR_HEAD"
+    },
+    {
+      "name": "License scan",
+      "status": "NOT_RUN"
+    },
+    {
+      "name": "SBOM",
+      "status": "NOT_RUN"
+    }
+  ],
+  "stages": [
+    {
+      "id": "PD-00",
+      "short": "IDEA",
+      "name": "Idea Intake",
+      "status": "LEGACY_BASELINE",
+      "owner": "Product",
+      "gate": "NOT_GATE_PROVEN",
+      "documents": {
+        "done": 1,
+        "total": 1,
+        "items": [
+          {
+            "id": "DOC-01",
+            "title": "Vision and Scope",
+            "status": "EXISTS"
+          }
+        ]
+      },
+      "open_risks": 0,
+      "cost_impact": "—",
+      "analysis": "Идея FATHER существовала до появления канонического Pre-Design процесса. Исторические документы сохраняются как baseline, а не как ретроактивный PASS.",
+      "decisions": [],
+      "history": [
+        "Legacy vision preserved"
+      ],
+      "lessons": [
+        "Нельзя задним числом превращать старую документацию в gate evidence."
+      ]
+    },
+    {
+      "id": "PD-01",
+      "short": "PRODUCT",
+      "name": "Product Manager",
+      "status": "BACKFILL_REQUIRED",
+      "owner": "Product Manager",
+      "gate": "NOT_READY",
+      "documents": {
+        "done": 0,
+        "total": 5,
+        "items": []
+      },
+      "open_risks": 1,
+      "cost_impact": "TBD",
+      "analysis": "Требуется нормализовать существующую платформенную цель в Product Brief, metrics, scope и assumptions.",
+      "decisions": [],
+      "history": [],
+      "lessons": []
+    },
+    {
+      "id": "PD-02",
+      "short": "INFOSEC",
+      "name": "Information Security",
+      "status": "IN_PROGRESS",
+      "owner": "ИБ-специалист",
+      "gate": "NOT_READY",
+      "documents": {
+        "done": 1,
+        "total": 6,
+        "items": [
+          {
+            "id": "SEC-BASE",
+            "title": "Security and Threat Model",
+            "status": "LEGACY_BASELINE"
+          }
+        ]
+      },
+      "open_risks": 3,
+      "cost_impact": "TBD",
+      "analysis": "Есть историческая security-документация и новые правила no-secret/no-pass-without-evidence. Полный Security Intake ещё не завершён.",
+      "decisions": [
+        "Provider credentials stay server-side.",
+        "High-impact SCM actions remain gated."
+      ],
+      "history": [
+        "SCM control-plane security rules defined"
+      ],
+      "lessons": []
+    },
+    {
+      "id": "DS-02",
+      "short": "DEVSECOPS",
+      "name": "DevSecOps Security",
+      "status": "IN_PROGRESS",
+      "owner": "DevSecOps Security",
+      "gate": "IN_PROGRESS",
+      "documents": {
+        "done": 4,
+        "total": 6,
+        "items": [
+          {
+            "id": "CI-001",
+            "title": "Prototype CI workflow",
+            "status": "ACTIVE"
+          },
+          {
+            "id": "SEC-001",
+            "title": "Secret hygiene guard",
+            "status": "ACTIVE"
+          },
+          {
+            "id": "TEST-001",
+            "title": "Control-plane tests",
+            "status": "ACTIVE"
+          },
+          {
+            "id": "TEST-002",
+            "title": "GitHub adapter tests",
+            "status": "ACTIVE"
+          }
+        ]
+      },
+      "open_risks": 3,
+      "cost_impact": "LOW",
+      "analysis": "Базовый CI уже реально запускается. SAST/SCA/SBOM и dedicated secret scanning пока не внедрены.",
+      "decisions": [
+        "NOT_RUN is never PASS.",
+        "CI evidence is commit-bound."
+      ],
+      "history": [
+        "Baseline CI introduced",
+        "Provider regression caught and fixed"
+      ],
+      "lessons": [
+        "CI должен проверяться на фактическом HEAD, а не по наличию workflow YAML."
+      ]
+    },
+    {
+      "id": "PD-03",
+      "short": "COMPLIANCE",
+      "name": "Legal / Compliance",
+      "status": "NOT_STARTED",
+      "owner": "Compliance",
+      "gate": "NOT_READY",
+      "documents": {
+        "done": 0,
+        "total": 3,
+        "items": []
+      },
+      "open_risks": 0,
+      "cost_impact": "TBD",
+      "analysis": "Не начато.",
+      "decisions": [],
+      "history": [],
+      "lessons": []
+    },
+    {
+      "id": "PD-04",
+      "short": "BA",
+      "name": "Business Analysis",
+      "status": "BACKFILL_REQUIRED",
+      "owner": "Business Analyst",
+      "gate": "BLOCKED",
+      "documents": {
+        "done": 0,
+        "total": 6,
+        "items": []
+      },
+      "open_risks": 0,
+      "cost_impact": "—",
+      "analysis": "Нужно восстановить бизнес-процессы среды из уже принятых решений.",
+      "decisions": [],
+      "history": [],
+      "lessons": []
+    },
+    {
+      "id": "PD-05",
+      "short": "SA",
+      "name": "System Analysis",
+      "status": "BACKFILL_REQUIRED",
+      "owner": "System Analyst",
+      "gate": "BLOCKED",
+      "documents": {
+        "done": 0,
+        "total": 7,
+        "items": []
+      },
+      "open_risks": 0,
+      "cost_impact": "—",
+      "analysis": "Нужно формализовать API/data-flow/state-machine уже реализуемого workbench.",
+      "decisions": [],
+      "history": [],
+      "lessons": []
+    },
+    {
+      "id": "PD-06",
+      "short": "REQ",
+      "name": "Requirements Baseline",
+      "status": "BACKFILL_REQUIRED",
+      "owner": "Requirements",
+      "gate": "BLOCKED",
+      "documents": {
+        "done": 0,
+        "total": 7,
+        "items": []
+      },
+      "open_risks": 0,
+      "cost_impact": "—",
+      "analysis": "Baseline требований ещё не закрыт каноническим gate.",
+      "decisions": [],
+      "history": [],
+      "lessons": []
+    },
+    {
+      "id": "PD-07",
+      "short": "REVIEW",
+      "name": "Pre-Design Review",
+      "status": "BLOCKED",
+      "owner": "Review Board",
+      "gate": "BLOCKED",
+      "documents": {
+        "done": 0,
+        "total": 2,
+        "items": []
+      },
+      "open_risks": 1,
+      "cost_impact": "—",
+      "analysis": "Нельзя объявлять READY_FOR_ARCHITECTURE, пока bootstrap backfill не завершён.",
+      "decisions": [],
+      "history": [],
+      "lessons": []
+    },
+    {
+      "id": "ARCH",
+      "short": "ARCH",
+      "name": "Architecture",
+      "status": "LEGACY_BASELINE",
+      "owner": "Architect",
+      "gate": "NOT_GATE_PROVEN",
+      "documents": {
+        "done": 6,
+        "total": 6,
+        "items": []
+      },
+      "open_risks": 1,
+      "cost_impact": "—",
+      "analysis": "Архитектурные документы существуют, но были созданы до нового gate-процесса.",
+      "decisions": [
+        "Provider-neutral Dev Platform layer.",
+        "Project identity independent from SCM provider."
+      ],
+      "history": [
+        "Project Registry architecture defined",
+        "Dev Platform control plane defined"
+      ],
+      "lessons": []
+    },
+    {
+      "id": "DEV",
+      "short": "DEV",
+      "name": "Development",
+      "status": "IN_PROGRESS",
+      "owner": "Development",
+      "gate": "IN_PROGRESS",
+      "documents": {
+        "done": 0,
+        "total": 0,
+        "items": []
+      },
+      "open_risks": 2,
+      "cost_impact": "LOW",
+      "analysis": "Рабочий вертикальный срез: registry → stage API → provider adapter → UI.",
+      "decisions": [
+        "Zero-dependency Python control plane for prototype.",
+        "No provider write mutation from browser."
+      ],
+      "history": [
+        "Control plane server added",
+        "Stage state externalized",
+        "GitHub live read adapter added",
+        "UI connected to live provider state"
+      ],
+      "lessons": [
+        "Сначала доказываем data/control model, затем выбираем тяжёлый frontend/backend stack."
+      ]
+    },
+    {
+      "id": "QA",
+      "short": "QA / EVAL",
+      "name": "QA / Evaluation",
+      "status": "IN_PROGRESS",
+      "owner": "QA",
+      "gate": "IN_PROGRESS",
+      "documents": {
+        "done": 2,
+        "total": 2,
+        "items": []
+      },
+      "open_risks": 1,
+      "cost_impact": "LOW",
+      "analysis": "Unit tests и CI работают; browser smoke/integration/accessibility ещё не закрыты.",
+      "decisions": [],
+      "history": [
+        "CI run 39553954082 succeeded"
+      ],
+      "lessons": []
+    },
+    {
+      "id": "OPS",
+      "short": "OPS",
+      "name": "Operations",
+      "status": "NOT_STARTED",
+      "owner": "SRE / Operations",
+      "gate": "NOT_READY",
+      "documents": {
+        "done": 0,
+        "total": 0,
+        "items": []
+      },
+      "open_risks": 0,
+      "cost_impact": "TBD",
+      "analysis": "Production deployment не начат.",
+      "decisions": [],
+      "history": [],
+      "lessons": []
+    }
+  ]
+}

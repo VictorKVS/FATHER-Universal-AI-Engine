@@ -2,6 +2,57 @@
   "schema_version": "father.project_registry.instances.v0.1",
   "projects": [
     {
+      "project_id": "FATHER-PLATFORM-001",
+      "name": "FATHER Project Workbench",
+      "short_name": "FATHER_WORKBENCH",
+      "project_type": "PLATFORM_BOOTSTRAP",
+      "status": "DEVELOPMENT",
+      "current_stage": "DEV",
+      "owner": "FATHER",
+      "repository": "VictorKVS/FATHER-Universal-AI-Engine",
+      "branch": "feature/father-project-registry-v01",
+      "root_path": "prototype/father-workbench",
+      "product_gate": "LEGACY_BASELINE",
+      "security_gate": "IN_PROGRESS",
+      "pre_design_gate": "BACKFILL_REQUIRED",
+      "architecture_gate": "LEGACY_BASELINE_NOT_GATE_PROVEN",
+      "runtime_status": "PROTOTYPE",
+      "manufacturing_kb_case_id": "FATHER-PLATFORM-001",
+      "stage_state_ref": "projects/state/FATHER-PLATFORM-001.stages.json",
+      "governance_note": "Bootstrap project predates the canonical Pre-Design gate. Existing implementation is preserved, but missing upstream artifacts must be backfilled before production promotion.",
+      "manufactured_objects": [
+        "FATHER Project Workbench UI",
+        "FATHER local control plane",
+        "Dev Platform provider layer"
+      ],
+      "tags": [
+        "FATHER",
+        "PLATFORM",
+        "WORKBENCH",
+        "DEVSECOPS",
+        "BOOTSTRAP"
+      ],
+      "git_workspace": {
+        "relation_to_default": "LIVE",
+        "open_pull_request": false,
+        "snapshot_ref": "docs/git/current_workspace.snapshot.json"
+      },
+      "dev_platform": {
+        "primary_provider": "github",
+        "provider_status": "CONNECTED",
+        "repository": "VictorKVS/FATHER-Universal-AI-Engine",
+        "branch": "feature/father-project-registry-v01",
+        "mirrors": [],
+        "migration_targets": [
+          "gitlab",
+          "gitverse",
+          "sourcecraft",
+          "gitflic"
+        ],
+        "provider_registry_ref": "config/dev_platform/providers.json"
+      }
+    },
+    {
       "project_id": "FATHER-ACADEMY-OSINT-001",
       "name": "ALINA OSINT ACADEMY",
       "short_name": "ALINA_OSINT_ACADEMY",
