@@ -247,6 +247,76 @@ class GitHubAdapter:
             "updated_at": value.get("updated_at"),
         }
 
+    def access_policy(
+        self,
+        repository: str,
+        branch: str,
+    ) -> dict[str, Any]:
+        owner, name = self.split_repository(repository)
+        root = f"/repos/{quote(owner, safe='')}/{quote(name, safe='')}"
+        branch_data = self._request(
+            f"{root}/branches/{quote(branch, safe='')}"
+        )
+        protected = bool(branch_data.get("protected"))
+        if not protected:
+            return {
+                "provider": self.provider_id,
+                "repository": repository,
+                "branch": branch,
+                "complete": True,
+                "protected": False,
+                "force_push_allowed": True,
+                "deletion_allowed": True,
+                "review_required": False,
+                "code_owner_review_required": False,
+                "required_status_checks": False,
+                "admin_enforcement": False,
+                "direct_push_restricted": False,
+                "limitations": [],
+            }
+
+        protection = self._request(
+            f"{root}/branches/{quote(branch, safe='')}/protection"
+        )
+        reviews = protection.get("required_pull_request_reviews")
+        checks = protection.get("required_status_checks")
+        restrictions = protection.get("restrictions")
+        return {
+            "provider": self.provider_id,
+            "repository": repository,
+            "branch": branch,
+            "complete": True,
+            "protected": True,
+            "force_push_allowed": bool(
+                (protection.get("allow_force_pushes") or {}).get("enabled")
+            ),
+            "deletion_allowed": bool(
+                (protection.get("allow_deletions") or {}).get("enabled")
+            ),
+            "review_required": reviews is not None,
+            "code_owner_review_required": (
+                bool(reviews.get("require_code_owner_reviews"))
+                if isinstance(reviews, dict)
+                else False
+            ),
+            "required_approving_review_count": (
+                reviews.get("required_approving_review_count")
+                if isinstance(reviews, dict)
+                else 0
+            ),
+            "required_status_checks": checks is not None,
+            "required_status_check_contexts": (
+                checks.get("contexts", [])
+                if isinstance(checks, dict)
+                else []
+            ),
+            "admin_enforcement": bool(
+                (protection.get("enforce_admins") or {}).get("enabled")
+            ),
+            "direct_push_restricted": restrictions is not None,
+            "limitations": [],
+        }
+
     def ref_inventory(self, repository: str) -> dict[str, Any]:
         owner, name = self.split_repository(repository)
         repo_path = f"/repos/{quote(owner, safe='')}/{quote(name, safe='')}"

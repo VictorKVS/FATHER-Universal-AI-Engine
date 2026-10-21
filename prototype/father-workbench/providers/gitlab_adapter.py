@@ -248,6 +248,75 @@ class GitLabAdapter:
             "updated_at": value.get("updated_at"),
         }
 
+    def access_policy(
+        self,
+        repository: str,
+        branch: str,
+    ) -> dict[str, Any]:
+        project_path = self.project_path(repository)
+        encoded_project = quote(project_path, safe="")
+        branch_data = self._request(
+            f"/projects/{encoded_project}/repository/branches/"
+            f"{quote(branch, safe='')}"
+        )
+        protected = bool(branch_data.get("protected"))
+        if not protected:
+            return {
+                "provider": self.provider_id,
+                "repository": repository,
+                "branch": branch,
+                "complete": True,
+                "protected": False,
+                "force_push_allowed": True,
+                "deletion_allowed": True,
+                "review_required": False,
+                "code_owner_review_required": False,
+                "required_status_checks": None,
+                "admin_enforcement": None,
+                "direct_push_restricted": False,
+                "limitations": [
+                    "GITLAB_APPROVAL_RULES_NOT_INCLUDED_IN_PROTECTED_BRANCH_API"
+                ],
+            }
+
+        rule = self._request(
+            f"/projects/{encoded_project}/protected_branches/"
+            f"{quote(branch, safe='')}"
+        )
+        push_levels = rule.get("push_access_levels") or []
+        merge_levels = rule.get("merge_access_levels") or []
+        push_no_access = bool(push_levels) and all(
+            item.get("access_level") == 0
+            for item in push_levels
+            if item.get("user_id") is None
+            and item.get("group_id") is None
+            and item.get("deploy_key_id") is None
+        )
+        return {
+            "provider": self.provider_id,
+            "repository": repository,
+            "branch": branch,
+            "complete": True,
+            "protected": True,
+            "force_push_allowed": bool(rule.get("allow_force_push")),
+            "deletion_allowed": False,
+            "review_required": None,
+            "code_owner_review_required": bool(
+                rule.get("code_owner_approval_required")
+            ),
+            "required_status_checks": None,
+            "admin_enforcement": None,
+            "direct_push_restricted": push_no_access,
+            "push_access_levels": push_levels,
+            "merge_access_levels": merge_levels,
+            "unprotect_access_levels": (
+                rule.get("unprotect_access_levels") or []
+            ),
+            "limitations": [
+                "GITLAB_MERGE_REQUEST_APPROVAL_RULES_REQUIRE_SEPARATE_API"
+            ],
+        }
+
     def ref_inventory(self, repository: str) -> dict[str, Any]:
         project_path = self.project_path(repository)
         encoded_project = quote(project_path, safe="")
