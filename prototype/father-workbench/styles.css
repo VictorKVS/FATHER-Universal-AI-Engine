@@ -103,3 +103,6 @@ main{padding:27px 32px 60px;overflow:hidden}.top,.hero,.sectionTitle,.panelHead{
 .providerConnectionState{margin-top:7px;padding:5px 6px;border:1px solid #223847;border-radius:6px;font-size:7px}
 .providerConnectionState.pass{border-color:#44d17a55;color:#8ff0ad}
 .providerConnectionState.blocked,.providerConnectionState.fail{border-color:#ff5e6c55;color:#ff98a2}
+
+.providerRollbackAction.danger{border-color:#ff5e6c66!important;color:#ff98a2!important;background:#2a1016!important}
+.providerRollbackAction.danger:hover{border-color:#ff5e6c!important}

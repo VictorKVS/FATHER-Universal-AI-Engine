@@ -1442,6 +1442,37 @@ async function testProviderConnection(projectId,targetProvider){
   }
 }
 
+async function rollbackPrimaryProvider(
+  projectId,
+  targetProvider,
+  expectedBindingEtag,
+  confirmation
+){
+  try{
+    const response=await fetch("/api/migrations/rollback-primary",{
+      method:"POST",
+      headers:{
+        "Content-Type":"application/json",
+        "X-FATHER-Action":"confirm"
+      },
+      body:JSON.stringify({
+        project_id:projectId,
+        target_provider:targetProvider,
+        expected_binding_etag:expectedBindingEtag,
+        confirmation,
+        confirm:true
+      })
+    });
+    const body=await response.json().catch(()=>({}));
+    return{http_status:response.status,...body};
+  }catch(_error){
+    return{
+      status:"BLOCKED",
+      errors:["CONTROL_PLANE_API_UNAVAILABLE"]
+    };
+  }
+}
+
 async function switchPrimaryProvider(
   projectId,
   targetProvider,
@@ -1798,6 +1829,7 @@ function renderProviderMatrix(){
   host.innerHTML=(model.providers.providers||[]).map((provider)=>{
     const runtime=providerRuntimeById(provider.id);
     const binding=targetBindings.find((item)=>item.provider===provider.id);
+    const rollbackCandidate=binding?.status==="ROLLBACK_CANDIDATE";
     const latestReview=(model.migrationSecurity[project.project_id]?.reviews||[])
       .filter((item)=>item.target_provider===provider.id)
       .slice(-1)[0];
@@ -1872,6 +1904,9 @@ function renderProviderMatrix(){
           '<button class="providerSecurityAction" data-provider="'+esc(provider.id)+'" '+(binding?"":"disabled")+'>Security review</button>'+
           '<button class="providerCutoverAction" data-provider="'+esc(provider.id)+'" '+(latestReview?.decision==="APPROVE"?"":"disabled")+'>Cutover gate</button>'+
           '<button class="providerSwitchAction" data-provider="'+esc(provider.id)+'" '+(latestCutover?.decision==="APPROVE"?"":"disabled")+'>Switch primary</button>'+
+          (rollbackCandidate
+            ?'<button class="providerRollbackAction danger" data-provider="'+esc(provider.id)+'">Rollback primary</button>'
+            :'')+
           '</div>'
         :'')+
       '</div>';
@@ -2148,6 +2183,73 @@ function renderProviderMatrix(){
       output.className=
         "actionResult "+(reviewed.decision==="APPROVE"?"ok":"block");
       renderProviderMatrix();
+    };
+  });
+
+  host.querySelectorAll(".providerRollbackAction").forEach((button)=>{
+    button.onclick=async()=>{
+      const target=button.dataset.provider;
+      const envelope=model.providerBindings[project.project_id]||{};
+      if(!envelope.etag){
+        window.alert("Binding ETag unavailable. Refresh FATHER.");
+        return;
+      }
+
+      const confirmation=
+        "ROLLBACK_PRIMARY:"+project.project_id+":"+target;
+      const typed=window.prompt(
+        "EMERGENCY HIGH IMPACT ACTION. Type exactly:\n"+confirmation,
+        ""
+      );
+      if(typed!==confirmation){
+        window.alert("Rollback cancelled: confirmation did not match.");
+        return;
+      }
+
+      const confirmed=window.confirm(
+        "Restore preserved rollback provider "+target+
+        "? FATHER will test repository/branch connectivity before changing primary."
+      );
+      if(!confirmed)return;
+
+      const output=byId("actionResult");
+      output.textContent=
+        "Testing rollback target and restoring previous primary…";
+      output.className="actionResult";
+
+      const rolled=await rollbackPrimaryProvider(
+        project.project_id,
+        target,
+        envelope.etag,
+        confirmation
+      );
+      if(
+        rolled.status!=="ROLLED_BACK" &&
+        rolled.status!=="ROLLED_BACK_EVIDENCE_DEGRADED"
+      ){
+        output.textContent=
+          (rolled.status||"BLOCKED")+" · "+
+          (rolled.errors||["UNKNOWN_ERROR"]).join(", ");
+        output.className="actionResult block";
+        return;
+      }
+
+      model.migrationVerifications={};
+      model.providerConnections={};
+      await loadRuntimeHistory(project);
+      await loadLiveState(project);
+      output.textContent=
+        rolled.status+
+        " · restored "+esc(rolled.primary?.provider||target)+
+        (rolled.post_rollback_status==="PASS"
+          ?" · post-rollback live evidence PASS"
+          :" · POST-ROLLBACK EVIDENCE DEGRADED")+
+        " · Git commit required";
+      output.className=
+        "actionResult "+(
+          rolled.status==="ROLLED_BACK"?"ok":"block"
+        );
+      render();
     };
   });
 
