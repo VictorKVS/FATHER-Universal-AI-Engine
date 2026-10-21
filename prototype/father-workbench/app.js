@@ -1778,13 +1778,16 @@ function renderProviderMatrix(){
           verified.verification.verification_id+
           " · PASS · HEAD "+
           verified.verification.source_head_sha+
-          " · branch parity proven · switch-primary still BLOCKED pending full ref/security evidence";
+          " · branch parity PASS · ref parity "+verified.ref_parity.state+
+          " · switch-primary BLOCKED pending access/security/cutover evidence";
         output.className="actionResult ok";
       }else{
         output.textContent=
           (verified.verification?.verification_id||"VERIFY")+
           " · "+(verified.status||"BLOCKED")+" · "+
-          (verified.verification?.blockers||verified.errors||["UNKNOWN_ERROR"]).join(", ");
+          ([...(verified.verification?.blockers||[]),...(verified.ref_parity?.blockers||[])] .length
+            ?[...(verified.verification?.blockers||[]),...(verified.ref_parity?.blockers||[])].join(", ")
+            :(verified.errors||["UNKNOWN_ERROR"]).join(", "));
         output.className="actionResult block";
       }
       await loadRuntimeHistory(project);

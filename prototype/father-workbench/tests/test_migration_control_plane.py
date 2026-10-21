@@ -73,6 +73,17 @@ class MigrationControlPlaneTests(unittest.TestCase):
                 def validate_branch_name(self, branch):
                     return branch
 
+                def ref_inventory(self, repository):
+                    return {
+                        "provider": "mock",
+                        "repository": repository,
+                        "default_branch": "main",
+                        "branches": {"main": "abc123"},
+                        "tags": {},
+                        "complete": True,
+                        "limitations": [],
+                    }
+
             with (
                 patch.object(server, "project_by_id", return_value=self.project),
                 patch.object(
@@ -122,9 +133,10 @@ class MigrationControlPlaneTests(unittest.TestCase):
 
             self.assertEqual(verified["status"], "PASS")
             self.assertTrue(verified["branch_parity_proven"])
+            self.assertTrue(verified["full_ref_parity_proven"])
             self.assertFalse(verified["switch_primary_eligible"])
             self.assertIn(
-                "FULL_REF_PARITY_REQUIRED",
+                "MIGRATION_SECURITY_REVIEW_REQUIRED",
                 verified["switch_primary_blockers"],
             )
             self.assertEqual(

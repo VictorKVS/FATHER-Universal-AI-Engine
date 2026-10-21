@@ -37,7 +37,7 @@ from gate_engine import (
 )
 from lifecycle_engine import reconcile_project_flow
 from migration_engine import build_migration_plan
-from migration_verifier import verify_provider_parity
+from migration_verifier import verify_provider_parity, verify_ref_inventory
 from provider_binding_store import (
     BindingConflictError,
     ProviderBindingStore,
@@ -342,6 +342,25 @@ def upsert_provider_binding(
     }
 
 
+def ref_inventory_or_incomplete(
+    adapter: Any,
+    provider: str,
+    repository: str,
+) -> dict[str, Any]:
+    method = getattr(adapter, "ref_inventory", None)
+    if not callable(method):
+        return {
+            "provider": provider,
+            "repository": repository,
+            "default_branch": None,
+            "branches": {},
+            "tags": {},
+            "complete": False,
+            "limitations": ["REF_INVENTORY_NOT_IMPLEMENTED"],
+        }
+    return method(repository)
+
+
 def verify_migration_target(
     project_id: str,
     target_provider: str,
@@ -369,12 +388,33 @@ def verify_migration_target(
             "binding_etag": binding_etag,
         }
 
+    dev = project.get("dev_platform") or {}
+    source_provider = str(dev.get("primary_provider") or "")
+    source_repository = str(
+        dev.get("repository") or project.get("repository") or ""
+    )
+    target_repository = str(target["repository"])
+
     try:
-        source_live = live_provider_state(project)
-        target_live = live_binding_state(
-            str(target["provider"]),
-            str(target["repository"]),
+        source_adapter = provider_adapter(source_provider)
+        target_adapter = provider_adapter(str(target["provider"]))
+        source_live = source_adapter.live_state(
+            source_repository,
+            str(dev.get("branch") or project.get("branch") or ""),
+        )
+        target_live = target_adapter.live_state(
+            target_repository,
             str(target["branch"]),
+        )
+        source_inventory = ref_inventory_or_incomplete(
+            source_adapter,
+            source_provider,
+            source_repository,
+        )
+        target_inventory = ref_inventory_or_incomplete(
+            target_adapter,
+            str(target["provider"]),
+            target_repository,
         )
     except NotImplementedError:
         return {
@@ -387,57 +427,91 @@ def verify_migration_target(
             "errors": ["PROVIDER_READ_FAILED"],
         }
 
-    report = verify_provider_parity(
+    branch_report = verify_provider_parity(
         project_id=project_id,
         source=source_live,
         target=target_live,
     )
-    evidence = EVIDENCE_STORE.store_evidence(
+    ref_report = verify_ref_inventory(
+        project_id=project_id,
+        source=source_inventory,
+        target=target_inventory,
+    )
+
+    branch_evidence = EVIDENCE_STORE.store_evidence(
         project_id=project_id,
         evidence_type="MIGRATION_VERIFICATION",
         provider=target_provider,
-        payload=report,
-        subject_key=report["verification_id"],
+        payload=branch_report,
+        subject_key=branch_report["verification_id"],
         refs={
             "source_provider": source_live.get("provider"),
             "target_provider": target_provider,
             "binding_etag": binding_etag,
         },
     )
+    ref_evidence = EVIDENCE_STORE.store_evidence(
+        project_id=project_id,
+        evidence_type="REF_PARITY_REPORT",
+        provider=target_provider,
+        payload=ref_report,
+        subject_key=ref_report["report_id"],
+        refs={
+            "source_provider": source_provider,
+            "target_provider": target_provider,
+            "binding_etag": binding_etag,
+        },
+    )
+
+    branch_ok = branch_report["state"] == "PASS"
+    ref_ok = ref_report["state"] == "PASS"
+    overall = "PASS" if branch_ok and ref_ok else "FAIL"
     event = EVIDENCE_STORE.append_manufacturing_event(
         project_id=project_id,
         event_type=(
-            "MIGRATION_VERIFICATION_PASSED"
-            if report["state"] == "PASS"
-            else "MIGRATION_VERIFICATION_FAILED"
+            "MIGRATION_REF_PARITY_PASSED"
+            if overall == "PASS"
+            else "MIGRATION_REF_PARITY_FAILED"
         ),
-        source_ref=report["verification_id"],
+        source_ref=ref_report["report_id"],
         payload={
             "target_provider": target_provider,
-            "state": report["state"],
-            "blockers": report["blockers"],
-            "evidence_id": evidence["evidence_id"],
+            "state": overall,
+            "branch_blockers": branch_report["blockers"],
+            "ref_blockers": ref_report["blockers"],
+            "branch_evidence_id": branch_evidence["evidence_id"],
+            "ref_evidence_id": ref_evidence["evidence_id"],
         },
     )
+
+    switch_blockers: list[str] = []
+    if not branch_ok:
+        switch_blockers.append("BRANCH_PARITY_NOT_PROVEN")
+    if not ref_ok:
+        switch_blockers.append("FULL_REF_PARITY_REQUIRED")
+    switch_blockers.extend(
+        [
+            "ACCESS_AND_BRANCH_POLICY_REPORT_REQUIRED",
+            "MIGRATION_SECURITY_REVIEW_REQUIRED",
+            "CUTOVER_APPROVAL_REQUIRED",
+        ]
+    )
+
     return {
-        "status": report["state"],
+        "status": overall,
         "project_id": project_id,
         "binding_etag": binding_etag,
-        "verification": report,
-        "evidence": evidence,
+        "verification": branch_report,
+        "ref_parity": ref_report,
+        "evidence": {
+            "branch": branch_evidence,
+            "refs": ref_evidence,
+        },
         "manufacturing_event_id": event["event_id"],
-        "branch_parity_proven": report["state"] == "PASS",
+        "branch_parity_proven": branch_ok,
+        "full_ref_parity_proven": ref_ok,
         "switch_primary_eligible": False,
-        "switch_primary_blockers": (
-            [
-                "FULL_REF_PARITY_REQUIRED",
-                "ACCESS_AND_BRANCH_POLICY_REPORT_REQUIRED",
-                "MIGRATION_SECURITY_REVIEW_REQUIRED",
-                "CUTOVER_APPROVAL_REQUIRED",
-            ]
-            if report["state"] == "PASS"
-            else ["BRANCH_PARITY_NOT_PROVEN"]
-        ),
+        "switch_primary_blockers": switch_blockers,
     }
 
 
