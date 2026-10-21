@@ -57,10 +57,12 @@ jobs:
           python -m json.tool models/failing_test/model.runtime.json > /dev/null
           python -m json.tool models/openai_compatible_a/model.runtime.json > /dev/null
           python -m json.tool models/openai_compatible_b/model.runtime.json > /dev/null
+          python -m json.tool models/deterministic_test_b/model.runtime.json > /dev/null
           python -m json.tool tools/zoo.json > /dev/null
           python -m json.tool cells/zoo.json > /dev/null
           python -m json.tool cells/CELL-001.json > /dev/null
           python -m json.tool cells/CELL-002.json > /dev/null
+          python -m json.tool cells/CELL-003.json > /dev/null
 
       - name: Unit tests
         run: python -m unittest discover -s father_core/tests -v
@@ -85,6 +87,14 @@ jobs:
             --test \
             --input "FATHER two-model fallback smoke" \
             --output artifacts/core/CELL-002-run.json
+
+      - name: CELL-003 compare smoke run
+        run: |
+          python scripts/run_father_cell.py \
+            --cell CELL-003 \
+            --test \
+            --input "FATHER two-model compare smoke" \
+            --output artifacts/core/CELL-003-run.json
 
       - name: Validate smoke evidence
         run: |
@@ -114,6 +124,17 @@ jobs:
           assert routed["attempts"][1]["status"] == "SUCCEEDED", routed
           assert routed["routing_evidence"]["fallback_used"] is True, routed
           assert routed["routing_evidence"]["semantic_input_hash_consistent"] is True, routed
+
+          compared = json.loads(
+              Path("artifacts/core/CELL-003-run.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          assert compared["status"] == "SUCCEEDED", compared
+          assert compared["mode"] == "FAN_OUT_COMPARE", compared
+          assert compared["comparison"]["semantic_input_equal"] is True, compared
+          assert compared["comparison"]["both_succeeded"] is True, compared
+          assert compared["comparison"]["selection_made"] is False, compared
           PY
 
       - name: Upload Core evidence
