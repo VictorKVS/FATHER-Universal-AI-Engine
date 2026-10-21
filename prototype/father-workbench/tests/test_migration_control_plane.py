@@ -12,6 +12,7 @@ if str(APP_DIR) not in sys.path:
 
 import server
 from provider_binding_store import ProviderBindingStore
+from migration_security_review_store import MigrationSecurityReviewStore
 
 
 class MigrationControlPlaneTests(unittest.TestCase):
@@ -267,6 +268,125 @@ class MigrationControlPlaneTests(unittest.TestCase):
                 result["ref_parity"]["blockers"],
             )
 
+
+    def test_security_approval_requires_current_pass_and_is_tracked(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            review_store = MigrationSecurityReviewStore(Path(tmp))
+            _state, etag = review_store.read("P-1")
+
+            events = []
+            evidence = []
+
+            class FakeEvidence:
+                def append_manufacturing_event(self, **kwargs):
+                    item = {
+                        "event_id": f"MFG-{len(events)+1}",
+                        **kwargs,
+                    }
+                    events.append(item)
+                    return item
+
+                def store_evidence(self, **kwargs):
+                    item = {
+                        "evidence_id": f"EVD-{len(evidence)+1}",
+                        "deduplicated": False,
+                        **kwargs,
+                    }
+                    evidence.append(item)
+                    return item
+
+            verification = {
+                "status": "PASS",
+                "verification": {"verification_id": "MIGVERIFY-1"},
+                "ref_parity": {"report_id": "REFPARITY-1"},
+                "access_policy": {"report_id": "ACCESSPOL-1"},
+                "evidence": {
+                    "branch": {"evidence_id": "EVD-BRANCH"},
+                    "refs": {"evidence_id": "EVD-REFS"},
+                    "access_policy": {"evidence_id": "EVD-ACCESS"},
+                },
+            }
+
+            with (
+                patch.object(server, "project_by_id", return_value=self.project),
+                patch.object(
+                    server,
+                    "verify_migration_target",
+                    return_value=verification,
+                ),
+                patch.object(
+                    server,
+                    "MIGRATION_SECURITY_REVIEW_STORE",
+                    review_store,
+                ),
+                patch.object(server, "EVIDENCE_STORE", FakeEvidence()),
+            ):
+                result = server.review_migration_security(
+                    "P-1",
+                    "gitlab",
+                    "APPROVE",
+                    (
+                        "Current branch, ref and access-policy evidence is "
+                        "acceptable for migration security review."
+                    ),
+                    "Information Security Specialist",
+                    etag,
+                )
+
+            self.assertEqual(result["status"], "APPLIED")
+            self.assertEqual(result["decision"], "APPROVE")
+            self.assertFalse(result["cutover_eligible"])
+            self.assertEqual(
+                result["cutover_blockers"],
+                ["CUTOVER_APPROVAL_REQUIRED"],
+            )
+            self.assertEqual(
+                evidence[0]["evidence_type"],
+                "MIGRATION_SECURITY_REVIEW",
+            )
+            latest = review_store.latest_for_target("P-1", "gitlab")
+            self.assertEqual(latest["decision"], "APPROVE")
+
+    def test_security_approve_is_blocked_when_parity_is_not_pass(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            review_store = MigrationSecurityReviewStore(Path(tmp))
+            _state, etag = review_store.read("P-1")
+
+            with (
+                patch.object(server, "project_by_id", return_value=self.project),
+                patch.object(
+                    server,
+                    "verify_migration_target",
+                    return_value={
+                        "status": "FAIL",
+                        "verification": {
+                            "blockers": ["HEAD_SHA_MISMATCH"]
+                        },
+                    },
+                ),
+                patch.object(
+                    server,
+                    "MIGRATION_SECURITY_REVIEW_STORE",
+                    review_store,
+                ),
+            ):
+                result = server.review_migration_security(
+                    "P-1",
+                    "gitlab",
+                    "APPROVE",
+                    (
+                        "Approval must not proceed because current parity "
+                        "evidence is not valid."
+                    ),
+                    "Information Security Specialist",
+                    etag,
+                )
+
+            self.assertEqual(result["status"], "BLOCKED")
+            self.assertIn(
+                "TECHNICAL_MIGRATION_EVIDENCE_NOT_PASS",
+                result["errors"],
+            )
 
 
 if __name__ == "__main__":
