@@ -10,7 +10,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 
-from providers.github_adapter import ProviderError
+from providers.base import ProviderError, validate_branch_name
 
 
 class GitLabAdapter:

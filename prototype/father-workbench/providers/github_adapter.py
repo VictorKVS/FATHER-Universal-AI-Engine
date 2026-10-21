@@ -9,19 +9,14 @@ from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
-import re
+
+from providers.base import ProviderError, validate_branch_name
 
 GITHUB_API = "https://api.github.com"
 
 
-class ProviderError(RuntimeError):
-    """Provider request failed without exposing credentials."""
-
-
 class GitHubAdapter:
     provider_id = "github"
-    _branch_pattern = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$")
-
     def __init__(self, token: str | None = None, timeout: float = 8.0) -> None:
         self._token = token if token is not None else os.getenv("FATHER_GITHUB_TOKEN")
         self._timeout = timeout
@@ -30,19 +25,9 @@ class GitHubAdapter:
     def can_write(self) -> bool:
         return bool(self._token)
 
-    @classmethod
-    def validate_branch_name(cls, value: str) -> str:
-        branch = value.strip()
-        forbidden_fragments = ("..", "//", "@{", "\\")
-        forbidden_chars = set(" ~^:?*[]")
-        if (
-            not cls._branch_pattern.fullmatch(branch)
-            or any(fragment in branch for fragment in forbidden_fragments)
-            or any(char in branch for char in forbidden_chars)
-            or branch.endswith(("/", ".", ".lock"))
-        ):
-            raise ValueError("Invalid branch name")
-        return branch
+    @staticmethod
+    def validate_branch_name(value: str) -> str:
+        return validate_branch_name(value)
 
     @staticmethod
     def split_repository(repository: str) -> tuple[str, str]:
