@@ -19,3 +19,14 @@ main{padding:27px 32px 60px;overflow:hidden}.top,.hero,.sectionTitle,.panelHead{
 .actionResult.block{border-color:#ff5e6c44;color:#ff9eaa}
 .repoMap{margin-top:10px}.gitMap{padding:15px;display:grid;grid-template-columns:160px 1fr;gap:14px}.mainBranch,.branchCard{border:1px solid var(--line);border-radius:8px;padding:10px;background:#091720}.mainBranch{border-color:#44d17a44}.branchStack{display:grid;gap:7px}.branchCard{position:relative}.branchCard:before{content:"";position:absolute;left:-15px;top:50%;width:14px;height:1px;background:#355160}.branchCardHead{display:flex;justify-content:space-between;gap:8px}.branchCardHead b{font:9px Consolas}.branchCard small{display:block;color:var(--muted);font-size:7px;margin-top:4px}
 @media(max-width:1050px){.shell{grid-template-columns:70px 1fr}.brand div,.side nav span{display:none}.side nav div{text-align:center}.layout{grid-template-columns:1fr}.rail{grid-template-columns:repeat(3,1fr)}}@media(max-width:760px){.shell{display:block}.side{display:none}main{padding:18px 12px}.layout,.rail{grid-template-columns:1fr}.kpis{grid-template-columns:repeat(2,1fr)}.details{grid-template-columns:1fr}.hero{display:block}.heroRight{justify-content:flex-start;margin-top:10px}.gitMap{grid-template-columns:1fr}}
+
+.providerMap{margin-top:10px}
+.providerMatrix{padding:14px;display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px}
+.providerCard{border:1px solid var(--line);background:#091720;border-radius:9px;padding:10px;min-height:112px}
+.providerCard.primary{border-color:#56d9ff66;box-shadow:inset 0 0 0 1px #56d9ff12}
+.providerCardHead{display:flex;justify-content:space-between;gap:8px;align-items:flex-start}
+.providerCard h4{margin:0;font-size:10px}
+.providerCard small{display:block;color:var(--muted);font-size:7px;margin-top:4px;line-height:1.4}
+.providerCaps{display:flex;flex-wrap:wrap;gap:4px;margin-top:9px}
+.providerCaps span{font-size:6px;color:#a9bdc9;border:1px solid #223847aa;border-radius:999px;padding:2px 5px}
+.providerRole{margin-top:8px;color:var(--cyan);font-size:7px;letter-spacing:.08em}
