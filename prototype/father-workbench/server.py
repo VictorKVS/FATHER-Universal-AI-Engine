@@ -37,6 +37,11 @@ from gate_engine import (
 )
 from lifecycle_engine import reconcile_project_flow
 from migration_engine import build_migration_plan
+from migration_verifier import verify_provider_parity
+from provider_binding_store import (
+    BindingConflictError,
+    ProviderBindingStore,
+)
 from state_store import ProjectStateStore, StateConflictError
 from traceability_engine import build_traceability_graph
 from providers.base import ProviderError
@@ -68,6 +73,7 @@ EVIDENCE_STORE = EvidenceStore(RUNTIME_DIR)
 EVIDENCE_PACK_STORE = EvidencePackStore(REPO_ROOT)
 PROJECT_STATE_STORE = ProjectStateStore(REPO_ROOT)
 DOCUMENT_STORE = DocumentStore(REPO_ROOT)
+PROVIDER_BINDING_STORE = ProviderBindingStore(REPO_ROOT)
 
 MAX_JSON_BODY = 16 * 1024
 
@@ -214,6 +220,15 @@ def provider_adapter(provider: str):
     raise NotImplementedError(f"Provider adapter not implemented: {provider}")
 
 
+def live_binding_state(
+    provider: str,
+    repository: str,
+    branch: str,
+) -> dict[str, Any]:
+    adapter = provider_adapter(provider)
+    return adapter.live_state(repository, branch)
+
+
 def live_provider_state(project: dict[str, Any]) -> dict[str, Any]:
     dev_platform = project.get("dev_platform") or {}
     provider = str(dev_platform.get("primary_provider") or "")
@@ -222,8 +237,197 @@ def live_provider_state(project: dict[str, Any]) -> dict[str, Any]:
     if not repository or not branch:
         raise ValueError("Project has no repository/branch binding")
 
-    adapter = provider_adapter(provider)
-    return adapter.live_state(str(repository), str(branch))
+    return live_binding_state(
+        provider,
+        str(repository),
+        str(branch),
+    )
+
+
+def provider_bindings(project_id: str) -> dict[str, Any]:
+    project = project_by_id(project_id)
+    if not project:
+        return {
+            "status": "BLOCKED",
+            "errors": ["PROJECT_NOT_FOUND"],
+        }
+    state, etag = PROVIDER_BINDING_STORE.read(project)
+    return {
+        "status": "OK",
+        "project_id": project_id,
+        "etag": etag,
+        "bindings": state,
+    }
+
+
+def upsert_provider_binding(
+    project_id: str,
+    provider: str,
+    repository: str,
+    branch: str,
+    expected_etag: str,
+) -> dict[str, Any]:
+    project = project_by_id(project_id)
+    if not project:
+        return {
+            "status": "BLOCKED",
+            "errors": ["PROJECT_NOT_FOUND"],
+        }
+    if not provider_config_by_id(provider):
+        return {
+            "status": "BLOCKED",
+            "errors": ["PROVIDER_NOT_REGISTERED"],
+        }
+    try:
+        adapter = provider_adapter(provider)
+    except NotImplementedError:
+        return {
+            "status": "BLOCKED",
+            "errors": ["PROVIDER_ADAPTER_NOT_IMPLEMENTED"],
+        }
+
+    # Validate repository/branch shape without persisting secrets.
+    try:
+        if hasattr(adapter, "split_repository"):
+            adapter.split_repository(repository)
+        if hasattr(adapter, "validate_branch_name"):
+            adapter.validate_branch_name(branch)
+    except ValueError as exc:
+        return {
+            "status": "BLOCKED",
+            "errors": [str(exc)],
+        }
+
+    try:
+        state, new_etag = PROVIDER_BINDING_STORE.upsert_target(
+            project,
+            provider=provider,
+            repository=repository,
+            branch=branch,
+            expected_etag=expected_etag,
+        )
+    except BindingConflictError:
+        current, current_etag = PROVIDER_BINDING_STORE.read(project)
+        return {
+            "status": "CONFLICT",
+            "errors": ["BINDING_ETAG_CONFLICT"],
+            "current_etag": current_etag,
+            "bindings": current,
+        }
+    except ValueError as exc:
+        return {
+            "status": "BLOCKED",
+            "errors": [str(exc)],
+        }
+
+    event = EVIDENCE_STORE.append_manufacturing_event(
+        project_id=project_id,
+        event_type="PROVIDER_TARGET_BOUND",
+        source_ref=f"BINDING:{provider}:{new_etag[:12]}",
+        payload={
+            "provider": provider,
+            "repository": repository,
+            "branch": branch,
+            "new_etag": new_etag,
+        },
+    )
+    return {
+        "status": "APPLIED",
+        "project_id": project_id,
+        "etag": new_etag,
+        "bindings": state,
+        "manufacturing_event_id": event["event_id"],
+        "worktree_change": True,
+        "git_commit_required": True,
+    }
+
+
+def verify_migration_target(
+    project_id: str,
+    target_provider: str,
+) -> dict[str, Any]:
+    project = project_by_id(project_id)
+    if not project:
+        return {
+            "status": "BLOCKED",
+            "errors": ["PROJECT_NOT_FOUND"],
+        }
+
+    bindings, binding_etag = PROVIDER_BINDING_STORE.read(project)
+    target = next(
+        (
+            item
+            for item in bindings.get("targets", [])
+            if item.get("provider") == target_provider
+        ),
+        None,
+    )
+    if not target:
+        return {
+            "status": "BLOCKED",
+            "errors": ["TARGET_BINDING_NOT_CONFIGURED"],
+            "binding_etag": binding_etag,
+        }
+
+    try:
+        source_live = live_provider_state(project)
+        target_live = live_binding_state(
+            str(target["provider"]),
+            str(target["repository"]),
+            str(target["branch"]),
+        )
+    except NotImplementedError:
+        return {
+            "status": "BLOCKED",
+            "errors": ["PROVIDER_ADAPTER_NOT_IMPLEMENTED"],
+        }
+    except ProviderError:
+        return {
+            "status": "BLOCKED",
+            "errors": ["PROVIDER_READ_FAILED"],
+        }
+
+    report = verify_provider_parity(
+        project_id=project_id,
+        source=source_live,
+        target=target_live,
+    )
+    evidence = EVIDENCE_STORE.store_evidence(
+        project_id=project_id,
+        evidence_type="MIGRATION_VERIFICATION",
+        provider=target_provider,
+        payload=report,
+        subject_key=report["verification_id"],
+        refs={
+            "source_provider": source_live.get("provider"),
+            "target_provider": target_provider,
+            "binding_etag": binding_etag,
+        },
+    )
+    event = EVIDENCE_STORE.append_manufacturing_event(
+        project_id=project_id,
+        event_type=(
+            "MIGRATION_VERIFICATION_PASSED"
+            if report["state"] == "PASS"
+            else "MIGRATION_VERIFICATION_FAILED"
+        ),
+        source_ref=report["verification_id"],
+        payload={
+            "target_provider": target_provider,
+            "state": report["state"],
+            "blockers": report["blockers"],
+            "evidence_id": evidence["evidence_id"],
+        },
+    )
+    return {
+        "status": report["state"],
+        "project_id": project_id,
+        "binding_etag": binding_etag,
+        "verification": report,
+        "evidence": evidence,
+        "manufacturing_event_id": event["event_id"],
+        "switch_primary_eligible": report["state"] == "PASS",
+    }
 
 
 def provider_state_subject_key(
@@ -1385,6 +1589,8 @@ class FatherHandler(BaseHTTPRequestHandler):
                         ],
                         "evidence_store": True,
                         "manufacturing_events": True,
+                        "provider_bindings": True,
+                        "migration_parity_verification": True,
                         "gate_engine": True,
                         "commit_bound_devsecops": True,
                         "atomic_project_state": True,
@@ -1487,6 +1693,14 @@ class FatherHandler(BaseHTTPRequestHandler):
                     )
                     return
 
+
+                if (
+                    len(parts) == 5
+                    and parts[3] == "dev-platform"
+                    and parts[4] == "bindings"
+                ):
+                    self._json(provider_bindings(project_id))
+                    return
 
                 if len(parts) == 4 and parts[3] == "stages":
                     self._json(project_stage_state(project))
@@ -1616,6 +1830,8 @@ class FatherHandler(BaseHTTPRequestHandler):
             "/api/actions/plan",
             "/api/actions/execute",
             "/api/migrations/plan",
+            "/api/migrations/bind",
+            "/api/migrations/verify",
             "/api/gates/recalculate",
             "/api/gates/decide",
             "/api/artifacts/upsert",
@@ -1942,6 +2158,74 @@ class FatherHandler(BaseHTTPRequestHandler):
             if result["status"] == "CONFLICT":
                 self._json(result, HTTPStatus.CONFLICT)
             elif result["status"] == "BLOCKED":
+                self._json(result, HTTPStatus.BAD_REQUEST)
+            else:
+                self._json(result)
+            return
+
+        if path == "/api/migrations/bind":
+            if self.headers.get("X-FATHER-Action") != "confirm":
+                self._error_json(
+                    HTTPStatus.FORBIDDEN,
+                    "EXPLICIT_ACTION_HEADER_REQUIRED",
+                )
+                return
+            if body.get("confirm") is not True:
+                self._error_json(
+                    HTTPStatus.FORBIDDEN,
+                    "EXPLICIT_CONFIRMATION_REQUIRED",
+                )
+                return
+            target_provider = str(body.get("target_provider", "")).strip()
+            repository = str(body.get("repository", "")).strip()
+            branch = str(body.get("branch", "")).strip()
+            expected_etag = str(body.get("expected_etag", "")).strip()
+            if not all((target_provider, repository, branch, expected_etag)):
+                self._error_json(
+                    HTTPStatus.BAD_REQUEST,
+                    "INVALID_PROVIDER_BINDING_REQUEST",
+                )
+                return
+            result = upsert_provider_binding(
+                project_id,
+                target_provider,
+                repository,
+                branch,
+                expected_etag,
+            )
+            if result["status"] == "CONFLICT":
+                self._json(result, HTTPStatus.CONFLICT)
+            elif result["status"] == "BLOCKED":
+                self._json(result, HTTPStatus.BAD_REQUEST)
+            else:
+                self._json(result)
+            return
+
+        if path == "/api/migrations/verify":
+            if self.headers.get("X-FATHER-Action") != "confirm":
+                self._error_json(
+                    HTTPStatus.FORBIDDEN,
+                    "EXPLICIT_ACTION_HEADER_REQUIRED",
+                )
+                return
+            if body.get("confirm") is not True:
+                self._error_json(
+                    HTTPStatus.FORBIDDEN,
+                    "EXPLICIT_CONFIRMATION_REQUIRED",
+                )
+                return
+            target_provider = str(body.get("target_provider", "")).strip()
+            if not target_provider:
+                self._error_json(
+                    HTTPStatus.BAD_REQUEST,
+                    "TARGET_PROVIDER_REQUIRED",
+                )
+                return
+            result = verify_migration_target(
+                project_id,
+                target_provider,
+            )
+            if result["status"] == "BLOCKED":
                 self._json(result, HTTPStatus.BAD_REQUEST)
             else:
                 self._json(result)
