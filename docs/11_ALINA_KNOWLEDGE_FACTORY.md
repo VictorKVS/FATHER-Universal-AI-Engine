@@ -57,3 +57,12 @@ KA-008 failed evaluation leaves previous approved release active.
 
 ## Roadmap
 K0 contracts + mock fixtures → K1 source inventory and original vault → K2 extraction/normalization → K3 knowledge graph → K4 RAG/index → K5 evaluation + review → K6 release and incremental maintenance.
+
+
+## Relationship to FATHER Manufacturing Knowledge Base
+
+This Knowledge Factory manages source-grounded domain/professional knowledge.
+
+Production/process experience is stored separately in the **FATHER Manufacturing Knowledge Base** defined in `docs/13_FATHER_MANUFACTURING_KNOWLEDGE_BASE.md`.
+
+ALINA may normalize manufacturing experience, but specialist decisions, evidence, costs, defects and gate history retain their original ownership and provenance.
