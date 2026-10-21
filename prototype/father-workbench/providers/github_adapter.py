@@ -151,6 +151,67 @@ class GitHubAdapter:
             "reconciled": True,
         }
 
+    def open_change_request(
+        self,
+        repository: str,
+        title: str,
+        head_ref: str,
+        base_ref: str,
+        body: str = "",
+        draft: bool = True,
+    ) -> dict[str, Any]:
+        if not self._token:
+            raise ProviderError("GitHub write credential unavailable")
+
+        title = title.strip()
+        if not title or len(title) > 200:
+            raise ValueError("Pull request title must be 1..200 characters")
+
+        head_ref = self.validate_branch_name(head_ref)
+        base_ref = self.validate_branch_name(base_ref)
+        owner, name = self.split_repository(repository)
+        repo_path = f"/repos/{quote(owner, safe='')}/{quote(name, safe='')}"
+
+        created = self._mutate(
+            "POST",
+            f"{repo_path}/pulls",
+            {
+                "title": title,
+                "head": head_ref,
+                "base": base_ref,
+                "body": body[:10000],
+                "draft": bool(draft),
+            },
+        )
+        number = created.get("number")
+        if not isinstance(number, int):
+            raise ProviderError("GitHub pull request response has no number")
+
+        reconciled = self._request(f"{repo_path}/pulls/{number}")
+        actual_head = (reconciled.get("head") or {}).get("ref")
+        actual_base = (reconciled.get("base") or {}).get("ref")
+        if (
+            reconciled.get("state") != "open"
+            or actual_head != head_ref
+            or actual_base != base_ref
+        ):
+            raise ProviderError("GitHub pull request reconciliation mismatch")
+
+        return {
+            "provider": self.provider_id,
+            "repository": repository,
+            "change_request_type": "pull_request",
+            "number": number,
+            "title": reconciled.get("title", title),
+            "state": reconciled.get("state"),
+            "draft": reconciled.get("draft"),
+            "head_ref": actual_head,
+            "base_ref": actual_base,
+            "head_sha": (reconciled.get("head") or {}).get("sha"),
+            "html_url": reconciled.get("html_url"),
+            "reconciled": True,
+        }
+
     @staticmethod
     def _compact_user(value: dict[str, Any] | None) -> dict[str, Any] | None:
         if not value:
