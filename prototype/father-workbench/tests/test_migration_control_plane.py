@@ -121,7 +121,12 @@ class MigrationControlPlaneTests(unittest.TestCase):
                     )
 
             self.assertEqual(verified["status"], "PASS")
-            self.assertTrue(verified["switch_primary_eligible"])
+            self.assertTrue(verified["branch_parity_proven"])
+            self.assertFalse(verified["switch_primary_eligible"])
+            self.assertIn(
+                "FULL_REF_PARITY_REQUIRED",
+                verified["switch_primary_blockers"],
+            )
             self.assertEqual(
                 verified["verification"]["checks"]["head_sha_parity"],
                 True,

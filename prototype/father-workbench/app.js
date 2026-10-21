@@ -1778,7 +1778,7 @@ function renderProviderMatrix(){
           verified.verification.verification_id+
           " · PASS · HEAD "+
           verified.verification.source_head_sha+
-          " · switch-primary eligible by parity evidence";
+          " · branch parity proven · switch-primary still BLOCKED pending full ref/security evidence";
         output.className="actionResult ok";
       }else{
         output.textContent=

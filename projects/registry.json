@@ -47,7 +47,11 @@
           "gitlab",
           "gitverse",
           "sourcecraft",
-          "gitflic"
+          "gitflic",
+          "azure_devops",
+          "bitbucket",
+          "forgejo",
+          "gitea"
         ],
         "provider_registry_ref": "config/dev_platform/providers.json"
       }
@@ -96,7 +100,11 @@
           "gitlab",
           "gitverse",
           "sourcecraft",
-          "gitflic"
+          "gitflic",
+          "azure_devops",
+          "bitbucket",
+          "forgejo",
+          "gitea"
         ],
         "provider_registry_ref": "config/dev_platform/providers.json"
       },
@@ -141,7 +149,11 @@
           "gitlab",
           "gitverse",
           "sourcecraft",
-          "gitflic"
+          "gitflic",
+          "azure_devops",
+          "bitbucket",
+          "forgejo",
+          "gitea"
         ],
         "provider_registry_ref": "config/dev_platform/providers.json"
       },

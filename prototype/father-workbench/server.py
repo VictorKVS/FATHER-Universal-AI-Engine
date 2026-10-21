@@ -426,7 +426,18 @@ def verify_migration_target(
         "verification": report,
         "evidence": evidence,
         "manufacturing_event_id": event["event_id"],
-        "switch_primary_eligible": report["state"] == "PASS",
+        "branch_parity_proven": report["state"] == "PASS",
+        "switch_primary_eligible": False,
+        "switch_primary_blockers": (
+            [
+                "FULL_REF_PARITY_REQUIRED",
+                "ACCESS_AND_BRANCH_POLICY_REPORT_REQUIRED",
+                "MIGRATION_SECURITY_REVIEW_REQUIRED",
+                "CUTOVER_APPROVAL_REQUIRED",
+            ]
+            if report["state"] == "PASS"
+            else ["BRANCH_PARITY_NOT_PROVEN"]
+        ),
     }
 
 
