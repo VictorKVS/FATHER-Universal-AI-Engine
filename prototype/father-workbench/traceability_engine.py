@@ -107,6 +107,83 @@ def build_traceability_graph(
                     )
                 edge(decision_node, "SUPPORTED_BY", target)
 
+        for analysis in stage.get("specialist_analyses") or []:
+            analysis_id = str(analysis.get("analysis_id") or "")
+            if not analysis_id:
+                continue
+            node_id = f"analysis:{stage_id}:{analysis_id}"
+            add_node(
+                node_id,
+                "SPECIALIST_ANALYSIS",
+                label=analysis.get("title") or analysis_id,
+                role=analysis.get("role"),
+                status=analysis.get("status"),
+            )
+            edge(stage_node, "HAS_ANALYSIS", node_id)
+            for ref in analysis.get("evidence_refs") or []:
+                ref = str(ref)
+                target = f"evidence:{ref}"
+                if ref not in evidence_ids:
+                    unresolved.add(ref)
+                    add_node(
+                        target,
+                        "UNRESOLVED_EVIDENCE_REF",
+                        label=ref,
+                    )
+                edge(node_id, "SUPPORTED_BY", target)
+
+        for decision in stage.get("decision_records") or []:
+            decision_id = str(decision.get("decision_id") or "")
+            if not decision_id:
+                continue
+            node_id = f"decision:{stage_id}:{decision_id}"
+            add_node(
+                node_id,
+                "DECISION",
+                label=decision.get("title") or decision_id,
+                status=decision.get("status"),
+                owner=decision.get("owner"),
+            )
+            edge(stage_node, "HAS_DECISION", node_id)
+            for ref in decision.get("evidence_refs") or []:
+                ref = str(ref)
+                target = f"evidence:{ref}"
+                if ref not in evidence_ids:
+                    unresolved.add(ref)
+                    add_node(
+                        target,
+                        "UNRESOLVED_EVIDENCE_REF",
+                        label=ref,
+                    )
+                edge(node_id, "SUPPORTED_BY", target)
+
+        for risk in stage.get("risk_records") or []:
+            risk_id = str(risk.get("risk_id") or "")
+            if not risk_id:
+                continue
+            node_id = f"risk:{stage_id}:{risk_id}"
+            add_node(
+                node_id,
+                "RISK",
+                label=risk.get("title") or risk_id,
+                status=risk.get("status"),
+                likelihood=risk.get("likelihood"),
+                impact=risk.get("impact"),
+                owner=risk.get("owner"),
+            )
+            edge(stage_node, "HAS_RISK", node_id)
+            for ref in risk.get("evidence_refs") or []:
+                ref = str(ref)
+                target = f"evidence:{ref}"
+                if ref not in evidence_ids:
+                    unresolved.add(ref)
+                    add_node(
+                        target,
+                        "UNRESOLVED_EVIDENCE_REF",
+                        label=ref,
+                    )
+                edge(node_id, "SUPPORTED_BY", target)
+
         for artifact in (stage.get("documents") or {}).get("items", []):
             artifact_id = str(artifact.get("id"))
             artifact_node = f"artifact:{stage_id}:{artifact_id}"
