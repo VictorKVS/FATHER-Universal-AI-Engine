@@ -367,6 +367,153 @@ def upsert_provider_binding(
     }
 
 
+def test_provider_connection(
+    project_id: str,
+    target_provider: str | None = None,
+) -> dict[str, Any]:
+    project = project_by_id(project_id)
+    if not project:
+        return {
+            "status": "BLOCKED",
+            "errors": ["PROJECT_NOT_FOUND"],
+        }
+
+    bindings, binding_etag = PROVIDER_BINDING_STORE.read(project)
+    primary = dict(bindings.get("primary") or {})
+    binding: dict[str, Any] | None = None
+
+    if not target_provider or target_provider == primary.get("provider"):
+        binding = primary
+    else:
+        binding = next(
+            (
+                dict(item)
+                for item in bindings.get("targets", [])
+                if item.get("provider") == target_provider
+            ),
+            None,
+        )
+
+    if not binding:
+        return {
+            "status": "BLOCKED",
+            "errors": ["PROVIDER_BINDING_NOT_CONFIGURED"],
+            "binding_etag": binding_etag,
+        }
+
+    provider = str(binding.get("provider") or "")
+    repository = str(binding.get("repository") or "")
+    branch = str(binding.get("branch") or "")
+    if not provider or not repository or not branch:
+        return {
+            "status": "BLOCKED",
+            "errors": ["PROVIDER_BINDING_INCOMPLETE"],
+            "binding_etag": binding_etag,
+        }
+
+    try:
+        adapter = provider_adapter(provider)
+        live = adapter.live_state(repository, branch)
+        head_sha = str((live.get("branch") or {}).get("head_sha") or "")
+        if not head_sha:
+            raise ProviderError("Provider branch has no head")
+
+        payload = {
+            "schema_version": "father.provider_connectivity.v0.1",
+            "project_id": project_id,
+            "provider": provider,
+            "repository": (
+                (live.get("repository") or {}).get("full_name")
+                or repository
+            ),
+            "branch": (live.get("branch") or {}).get("name") or branch,
+            "head_sha": head_sha,
+            "default_branch": (
+                (live.get("repository") or {}).get("default_branch")
+            ),
+            "status": "PASS",
+            "binding_etag": binding_etag,
+        }
+        evidence = EVIDENCE_STORE.store_evidence(
+            project_id=project_id,
+            evidence_type="PROVIDER_CONNECTIVITY",
+            provider=provider,
+            payload=payload,
+            subject_key=(
+                f"{provider}:{repository}:{branch}:{head_sha}:CONNECTIVITY"
+            ),
+            refs={"binding_etag": binding_etag},
+        )
+        event = EVIDENCE_STORE.append_manufacturing_event(
+            project_id=project_id,
+            event_type="PROVIDER_CONNECTIVITY_PASSED",
+            source_ref=evidence["evidence_id"],
+            payload={
+                "provider": provider,
+                "repository": repository,
+                "branch": branch,
+                "head_sha": head_sha,
+                "evidence_id": evidence["evidence_id"],
+            },
+        )
+        return {
+            "status": "PASS",
+            "project_id": project_id,
+            "provider": provider,
+            "repository": repository,
+            "branch": branch,
+            "head_sha": head_sha,
+            "binding_etag": binding_etag,
+            "evidence": evidence,
+            "manufacturing_event_id": event["event_id"],
+        }
+    except (ProviderError, ValueError, NotImplementedError):
+        payload = {
+            "schema_version": "father.provider_connectivity.v0.1",
+            "project_id": project_id,
+            "provider": provider,
+            "repository": repository,
+            "branch": branch,
+            "status": "FAIL",
+            "reason": "PROVIDER_READ_FAILED",
+            "binding_etag": binding_etag,
+        }
+        evidence = EVIDENCE_STORE.store_evidence(
+            project_id=project_id,
+            evidence_type="PROVIDER_CONNECTIVITY",
+            provider=provider,
+            payload=payload,
+            subject_key=(
+                f"{provider}:{repository}:{branch}:FAIL:"
+                f"{binding_etag[:16]}"
+            ),
+            refs={"binding_etag": binding_etag},
+        )
+        event = EVIDENCE_STORE.append_manufacturing_event(
+            project_id=project_id,
+            event_type="PROVIDER_CONNECTIVITY_FAILED",
+            source_ref=evidence["evidence_id"],
+            payload={
+                "provider": provider,
+                "repository": repository,
+                "branch": branch,
+                "reason": "PROVIDER_READ_FAILED",
+                "evidence_id": evidence["evidence_id"],
+            },
+        )
+        return {
+            "status": "FAIL",
+            "project_id": project_id,
+            "provider": provider,
+            "repository": repository,
+            "branch": branch,
+            "errors": ["PROVIDER_READ_FAILED"],
+            "binding_etag": binding_etag,
+            "evidence": evidence,
+            "manufacturing_event_id": event["event_id"],
+        }
+
+
 def access_policy_or_incomplete(
     adapter: Any,
     provider: str,
@@ -2479,6 +2626,7 @@ class FatherHandler(BaseHTTPRequestHandler):
                         "manufacturing_events": True,
                         "provider_bindings": True,
                         "migration_parity_verification": True,
+                        "provider_connection_test": True,
                         "provider_primary_switch": "CUTOVER_GATED",
                         "migration_security_review": True,
                         "migration_cutover_approval": True,
@@ -2742,6 +2890,7 @@ class FatherHandler(BaseHTTPRequestHandler):
             "/api/migrations/security-review",
             "/api/migrations/cutover-review",
             "/api/migrations/switch-primary",
+            "/api/providers/test-connection",
             "/api/gates/recalculate",
             "/api/gates/decide",
             "/api/artifacts/upsert",
@@ -3069,6 +3218,22 @@ class FatherHandler(BaseHTTPRequestHandler):
                 self._json(result, HTTPStatus.CONFLICT)
             elif result["status"] == "BLOCKED":
                 self._json(result, HTTPStatus.BAD_REQUEST)
+            else:
+                self._json(result)
+            return
+
+        if path == "/api/providers/test-connection":
+            target_provider = str(
+                body.get("target_provider", "")
+            ).strip() or None
+            result = test_provider_connection(
+                project_id,
+                target_provider,
+            )
+            if result["status"] == "BLOCKED":
+                self._json(result, HTTPStatus.BAD_REQUEST)
+            elif result["status"] == "FAIL":
+                self._json(result, HTTPStatus.BAD_GATEWAY)
             else:
                 self._json(result)
             return
