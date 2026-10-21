@@ -430,3 +430,26 @@ WHAT IT COST,
 WHAT WAS PROVEN,
 AND WHAT SHOULD BE REUSED NEXT TIME.
 \`\`\`
+
+
+---
+
+# Project Memory Release
+
+Manufacturing KB retains the full development history.
+
+When a project is approved/released, FATHER creates a compact Project Memory from that history:
+
+```text
+FULL MANUFACTURING HISTORY
+        ↓
+DECISIONS + EVIDENCE + COST + RISKS + LESSONS
+        ↓
+PROJECT MEMORY DRAFT
+        ↓
+HUMAN REVIEW
+        ↓
+APPROVED PROJECT MEMORY
+```
+
+The summary never replaces original evidence or rejected alternatives.
