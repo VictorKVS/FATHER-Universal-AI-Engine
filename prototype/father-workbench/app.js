@@ -7,7 +7,9 @@ let model={
   providers:fallbackProviders,
   git:fallbackGit,
   stageStates:{},
-  liveStates:{}
+  liveStates:{},
+  evidenceStates:{},
+  manufacturingEvents:{}
 };
 let selectedProject=null;
 let selectedStage=null;
@@ -59,6 +61,21 @@ function providerById(id){
 function stageById(projectId,stageId){
   const state=stageState(projectId);
   return state?.stages?.find((item)=>item.id===stageId)||null;
+}
+
+async function loadRuntimeHistory(project){
+  if(!project)return;
+  const projectId=encodeURIComponent(project.project_id);
+  const evidence=await readFirst(
+    ["/api/projects/"+projectId+"/evidence"],
+    {evidence:[]}
+  );
+  const events=await readFirst(
+    ["/api/projects/"+projectId+"/manufacturing-events"],
+    {events:[]}
+  );
+  model.evidenceStates[project.project_id]=evidence.evidence||[];
+  model.manufacturingEvents[project.project_id]=events.events||[];
 }
 
 async function loadLiveState(project){
@@ -114,7 +131,9 @@ async function load(){
   }
 
   if(selectedProject){
-    await loadLiveState(projectById(selectedProject));
+    const selected=projectById(selectedProject);
+    await loadLiveState(selected);
+    await loadRuntimeHistory(selected);
   }
 
   byId("snapshot").textContent=
@@ -162,6 +181,7 @@ function renderProjects(){
       selectedStage=state?.current_stage||state?.stages?.[0]?.id||null;
       activeTab="overview";
       await loadLiveState(project);
+      await loadRuntimeHistory(project);
       render();
     };
     host.appendChild(card);
@@ -216,7 +236,9 @@ function renderKpis(project,state,branch){
     ["Product Gate",project.product_gate||"—","PM decision"],
     ["Security Gate",project.security_gate||"—","InfoSec + DevSecOps"],
     ["Documents",docs.done+" / "+docs.total,"project projection"],
-    ["Evidence",state.evidence_status||"—","no evidence → no pass"],
+    ["Evidence",
+      String((model.evidenceStates[project.project_id]||[]).length),
+      state.evidence_status||"no evidence → no pass"],
     ["SCM",branch?.relation_to_main||project.dev_platform?.provider_status||"—",
       branch?("+"+(branch.ahead_by||0)+" / -"+(branch.behind_by||0)):"provider state"]
   ];
@@ -274,7 +296,7 @@ function renderInspector(state){
   if(activeTab==="documents")host.innerHTML=documentsHtml(stage);
   else if(activeTab==="analysis")host.innerHTML=analysisHtml(stage);
   else if(activeTab==="security")host.innerHTML=securityHtml(stage,state);
-  else if(activeTab==="history")host.innerHTML=historyHtml(stage);
+  else if(activeTab==="history")host.innerHTML=historyHtml(stage,selectedProject);
   else host.innerHTML=overviewHtml(stage);
 }
 
@@ -334,9 +356,10 @@ function checksRows(checks){
   ).join("")+'</div>';
 }
 
-function historyHtml(stage){
+function historyHtml(stage,projectId){
   const history=stage.history||[];
   const lessons=stage.lessons||[];
+  const runtimeEvents=(model.manufacturingEvents[projectId]||[]).slice(0,12);
   const events=history.length
     ?'<div class="rows">'+history.map((item,index)=>
       '<div class="row"><span class="code">EVT-'+(index+1)+
@@ -349,7 +372,15 @@ function historyHtml(stage){
       '</span><span>'+esc(item)+'</span><span class="pill DRAFT">OBSERVED</span></div>'
     ).join("")+'</div>'
     :'<div class="empty">No lessons yet.</div>';
+  const manufacturing=runtimeEvents.length
+    ?'<div class="rows">'+runtimeEvents.map((item)=>
+      '<div class="row"><span class="code">'+esc(item.event_type||"EVENT")+
+      '</span><span>'+esc((item.payload||{}).action||item.source_ref||item.event_id)+
+      '</span><span class="pill DRAFT">'+esc((item.occurred_at||"").slice(0,19))+'</span></div>'
+    ).join("")+'</div>'
+    :'<div class="empty">No runtime manufacturing events yet.</div>';
   return '<em>HISTORY</em>'+events+
+    '<div style="height:13px"></div><em>MANUFACTURING EVENTS</em>'+manufacturing+
     '<div style="height:13px"></div><em>LESSONS LEARNED</em>'+learned;
 }
 
@@ -528,8 +559,9 @@ function renderScmActions(project,state,branch){
         executed.status==="SUCCEEDED"?"ok":"block"
       );
 
-      if(executed.status==="SUCCEEDED"){
+      if(executed.status==="SUCCEEDED" || executed.status==="SUCCEEDED_EVIDENCE_DEGRADED"){
         await loadLiveState(project);
+        await loadRuntimeHistory(project);
         renderWorkspace();
         renderGitMap();
       }
@@ -665,6 +697,8 @@ function renderProviderMatrix(){
 
 byId("refresh").onclick=async()=>{
   model.liveStates={};
+  model.evidenceStates={};
+  model.manufacturingEvents={};
   await load();
 };
 load();

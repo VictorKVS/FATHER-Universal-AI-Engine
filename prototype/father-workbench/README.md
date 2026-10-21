@@ -70,3 +70,22 @@ python prototype/father-workbench/server.py --port 8094
 Do **not** put the token in source files, `.env` committed to Git, browser JavaScript, screenshots or evidence files.
 
 For this prototype use the minimum GitHub repository permission needed to create refs. Higher-impact operations remain disabled even if the token itself has broader rights.
+
+
+## Evidence and manufacturing history
+
+The control plane stores runtime evidence outside Git:
+
+- `prototype/father-workbench/runtime/evidence-index.jsonl`
+- `prototype/father-workbench/runtime/evidence/<project>/<evidence_id>.json`
+- `prototype/father-workbench/runtime/manufacturing-events.jsonl`
+- `prototype/father-workbench/runtime/scm-actions.jsonl`
+
+Runtime files are ignored by Git and may contain operational metadata. Evidence files are create-once and indexed by SHA-256.
+
+APIs:
+
+- `GET /api/projects/<project_id>/evidence`
+- `GET /api/projects/<project_id>/manufacturing-events`
+
+A live provider read captures/deduplicates a provider-state snapshot. Successful SCM mutations produce both audit/manufacturing events and an action-result evidence record.
