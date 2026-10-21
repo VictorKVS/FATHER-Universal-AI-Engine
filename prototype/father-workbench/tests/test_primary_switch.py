@@ -207,10 +207,15 @@ class PrimarySwitchTests(unittest.TestCase):
             state, _etag = bindings.read(self.project)
             self.assertEqual(state["primary"]["provider"], "gitlab")
             self.assertEqual(state["historical"][-1]["provider"], "github")
-            self.assertEqual(
-                server.active_provider_binding(self.project)["provider"],
-                "gitlab",
-            )
+            with patch.object(
+                server,
+                "PROVIDER_BINDING_STORE",
+                bindings,
+            ):
+                self.assertEqual(
+                    server.active_provider_binding(self.project)["provider"],
+                    "gitlab",
+                )
             self.assertTrue(
                 any(
                     item["event_type"] == "PROVIDER_PRIMARY_SWITCHED"
