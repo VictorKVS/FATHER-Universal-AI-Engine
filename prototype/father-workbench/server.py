@@ -923,6 +923,178 @@ def review_migration_cutover(
     }
 
 
+def verify_post_cutover(
+    project_id: str,
+    rollback_binding: dict[str, Any],
+    primary_binding: dict[str, Any],
+    action_id: str,
+) -> dict[str, Any]:
+    """Verify the new primary against the preserved rollback source."""
+    try:
+        rollback_provider = str(rollback_binding.get("provider") or "")
+        rollback_repository = str(
+            rollback_binding.get("repository") or ""
+        )
+        rollback_branch = str(rollback_binding.get("branch") or "")
+        primary_provider = str(primary_binding.get("provider") or "")
+        primary_repository = str(primary_binding.get("repository") or "")
+        primary_branch = str(primary_binding.get("branch") or "")
+
+        if not all(
+            (
+                rollback_provider,
+                rollback_repository,
+                rollback_branch,
+                primary_provider,
+                primary_repository,
+                primary_branch,
+            )
+        ):
+            return {
+                "status": "DEGRADED",
+                "blockers": ["POST_CUTOVER_BINDING_INCOMPLETE"],
+                "rollback_recommended": True,
+            }
+
+        rollback_adapter = provider_adapter(rollback_provider)
+        primary_adapter = provider_adapter(primary_provider)
+
+        rollback_live = rollback_adapter.live_state(
+            rollback_repository,
+            rollback_branch,
+        )
+        primary_live = primary_adapter.live_state(
+            primary_repository,
+            primary_branch,
+        )
+        rollback_inventory = ref_inventory_or_incomplete(
+            rollback_adapter,
+            rollback_provider,
+            rollback_repository,
+        )
+        primary_inventory = ref_inventory_or_incomplete(
+            primary_adapter,
+            primary_provider,
+            primary_repository,
+        )
+        rollback_access = access_policy_or_incomplete(
+            rollback_adapter,
+            rollback_provider,
+            rollback_repository,
+            rollback_branch,
+        )
+        primary_access = access_policy_or_incomplete(
+            primary_adapter,
+            primary_provider,
+            primary_repository,
+            primary_branch,
+        )
+
+        branch_report = verify_provider_parity(
+            project_id=project_id,
+            source=rollback_live,
+            target=primary_live,
+        )
+        ref_report = verify_ref_inventory(
+            project_id=project_id,
+            source=rollback_inventory,
+            target=primary_inventory,
+        )
+        access_report = evaluate_access_policy(
+            project_id=project_id,
+            source=rollback_access,
+            target=primary_access,
+        )
+
+        blockers: list[str] = []
+        if branch_report.get("state") != "PASS":
+            blockers.append("POST_CUTOVER_BRANCH_PARITY_FAILED")
+        if ref_report.get("state") != "PASS":
+            blockers.append("POST_CUTOVER_REF_PARITY_FAILED")
+        if access_report.get("state") != "PASS_WITH_REVIEW":
+            blockers.append("POST_CUTOVER_ACCESS_POLICY_FAILED")
+
+        status = "PASS" if not blockers else "DEGRADED"
+        report = {
+            "schema_version": "father.post_cutover_verification.v0.1",
+            "project_id": project_id,
+            "action_id": action_id,
+            "rollback_provider": rollback_provider,
+            "primary_provider": primary_provider,
+            "status": status,
+            "blockers": blockers,
+            "rollback_recommended": status != "PASS",
+            "branch_parity": branch_report,
+            "ref_parity": ref_report,
+            "access_policy": access_report,
+        }
+        evidence = EVIDENCE_STORE.store_evidence(
+            project_id=project_id,
+            evidence_type="POST_CUTOVER_VERIFICATION",
+            provider=primary_provider,
+            payload=report,
+            subject_key=(
+                f"{action_id}:POST_CUTOVER:"
+                f"{branch_report.get('verification_id')}:"
+                f"{ref_report.get('report_id')}:"
+                f"{access_report.get('report_id')}"
+            ),
+            refs={
+                "action_id": action_id,
+                "rollback_provider": rollback_provider,
+                "primary_provider": primary_provider,
+            },
+        )
+        event = EVIDENCE_STORE.append_manufacturing_event(
+            project_id=project_id,
+            event_type=(
+                "POST_CUTOVER_VERIFICATION_PASSED"
+                if status == "PASS"
+                else "POST_CUTOVER_VERIFICATION_FAILED"
+            ),
+            source_ref=str(evidence["evidence_id"]),
+            payload={
+                "action_id": action_id,
+                "rollback_provider": rollback_provider,
+                "primary_provider": primary_provider,
+                "status": status,
+                "blockers": blockers,
+                "evidence_id": evidence["evidence_id"],
+            },
+        )
+        return {
+            **report,
+            "evidence": evidence,
+            "manufacturing_event_id": event["event_id"],
+        }
+    except (
+        ProviderError,
+        OSError,
+        ValueError,
+        NotImplementedError,
+    ) as exc:
+        failure = {
+            "schema_version": "father.post_cutover_verification.v0.1",
+            "project_id": project_id,
+            "action_id": action_id,
+            "status": "DEGRADED",
+            "blockers": ["POST_CUTOVER_VERIFICATION_UNAVAILABLE"],
+            "rollback_recommended": True,
+            "error_type": type(exc).__name__,
+        }
+        try:
+            event = EVIDENCE_STORE.append_manufacturing_event(
+                project_id=project_id,
+                event_type="POST_CUTOVER_VERIFICATION_FAILED",
+                source_ref=action_id,
+                payload=failure,
+            )
+            failure["manufacturing_event_id"] = event["event_id"]
+        except OSError:
+            pass
+        return failure
+
+
 def switch_primary_provider(
     project_id: str,
     target_provider: str,
@@ -1081,28 +1253,56 @@ def switch_primary_provider(
         },
     )
 
-    post_cutover_status = "CAPTURED"
-    post_cutover_evidence = None
+    post_cutover = verify_post_cutover(
+        project_id,
+        before,
+        after,
+        action_id,
+    )
+    post_cutover_status = str(post_cutover.get("status") or "DEGRADED")
+
+    # A lightweight live-state snapshot is still captured separately for
+    # observability, but it cannot promote the cutover on its own.
+    post_cutover_live_evidence = None
     try:
         live = live_binding_state(
             str(after.get("provider") or ""),
             str(after.get("repository") or ""),
             str(after.get("branch") or ""),
         )
-        post_cutover_evidence = capture_live_provider_evidence(
+        post_cutover_live_evidence = capture_live_provider_evidence(
             project,
             live,
             source_ref=action_id,
         )
     except (ProviderError, OSError, ValueError, NotImplementedError):
-        post_cutover_status = "FAILED"
+        if post_cutover_status == "PASS":
+            post_cutover_status = "DEGRADED"
+            post_cutover = {
+                **post_cutover,
+                "status": "DEGRADED",
+                "blockers": list(post_cutover.get("blockers") or [])
+                + ["POST_CUTOVER_LIVE_EVIDENCE_FAILED"],
+                "rollback_recommended": True,
+            }
+
+    final_status = (
+        "APPLIED"
+        if post_cutover_status == "PASS"
+        else "APPLIED_POST_CUTOVER_DEGRADED"
+    )
+    final_audit = {
+        **payload,
+        "status": final_status,
+        "post_cutover_status": post_cutover_status,
+        "rollback_recommended": bool(
+            post_cutover.get("rollback_recommended")
+        ),
+    }
+    write_audit_event(final_audit)
 
     return {
-        "status": (
-            "APPLIED"
-            if post_cutover_status == "CAPTURED"
-            else "APPLIED_POST_CUTOVER_EVIDENCE_DEGRADED"
-        ),
+        "status": final_status,
         "project_id": project_id,
         "action_id": action_id,
         "previous_primary": before,
@@ -1110,8 +1310,12 @@ def switch_primary_provider(
         "binding_etag": new_etag,
         "cutover_approval_id": latest_cutover.get("approval_id"),
         "evidence": evidence,
-        "post_cutover_evidence": post_cutover_evidence,
+        "post_cutover": post_cutover,
+        "post_cutover_evidence": post_cutover_live_evidence,
         "post_cutover_status": post_cutover_status,
+        "rollback_recommended": bool(
+            post_cutover.get("rollback_recommended")
+        ),
         "manufacturing_event_id": event["event_id"],
         "provider_mutation": False,
         "worktree_change": True,
