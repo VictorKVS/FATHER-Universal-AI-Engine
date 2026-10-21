@@ -407,3 +407,14 @@ NO SECRET IN GIT.
 LARGE/SENSITIVE ARTIFACTS MAY LIVE OUTSIDE GIT,
 BUT THEIR VERIFIED MANIFEST MUST LIVE IN THE PROJECT PROTOCOL.
 \`\`\`
+
+
+---
+
+# Human Commit / DevSecOps workflow
+
+Git history must remain readable to humans.
+
+Material changes use concise, meaningful commit subjects and one logical change per commit. DevSecOps checks and evidence precede green gates.
+
+See `docs/17_FATHER_HUMAN_COMMIT_DEVSECOPS.md`.
