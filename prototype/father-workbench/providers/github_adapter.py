@@ -292,6 +292,22 @@ class GitHubAdapter:
             f"{repo_path}/actions/runs",
             {"branch": branch, "per_page": "10"},
         )
+        workflow_runs = (
+            workflow_data.get("workflow_runs", [])
+            if isinstance(workflow_data, dict)
+            else []
+        )
+
+        artifact_items: list[dict[str, Any]] = []
+        latest_run = workflow_runs[0] if workflow_runs else None
+        latest_run_id = latest_run.get("id") if latest_run else None
+        if latest_run_id:
+            artifact_data = self._request(
+                f"{repo_path}/actions/runs/{latest_run_id}/artifacts",
+                {"per_page": "100"},
+            )
+            if isinstance(artifact_data, dict):
+                artifact_items = artifact_data.get("artifacts", [])
 
         return {
             "provider": self.provider_id,
@@ -336,6 +352,22 @@ class GitHubAdapter:
             } if isinstance(combined_status, dict) else None,
             "workflow_runs": [
                 self._compact_workflow(item)
-                for item in workflow_data.get("workflow_runs", [])
-            ] if isinstance(workflow_data, dict) else [],
+                for item in workflow_runs
+            ],
+            "artifacts": [
+                {
+                    "id": item.get("id"),
+                    "name": item.get("name"),
+                    "size_in_bytes": item.get("size_in_bytes"),
+                    "expired": item.get("expired"),
+                    "created_at": item.get("created_at"),
+                    "expires_at": item.get("expires_at"),
+                    "digest": item.get("digest"),
+                    "workflow_run_id": (
+                        (item.get("workflow_run") or {}).get("id")
+                        or latest_run_id
+                    ),
+                }
+                for item in artifact_items
+            ],
         }

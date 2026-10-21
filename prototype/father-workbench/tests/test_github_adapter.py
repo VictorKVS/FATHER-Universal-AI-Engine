@@ -164,6 +164,18 @@ class GitHubAdapterTests(unittest.TestCase):
                         }
                     ]
                 }
+            if path.endswith("/actions/runs/9/artifacts"):
+                return {
+                    "artifacts": [
+                        {
+                            "id": 55,
+                            "name": "father-devsecops-abc123",
+                            "expired": False,
+                            "digest": "sha256:test",
+                            "workflow_run": {"id": 9},
+                        }
+                    ]
+                }
             raise AssertionError(path)
 
         with patch.object(adapter, "_request", side_effect=fake_request):
@@ -178,6 +190,11 @@ class GitHubAdapterTests(unittest.TestCase):
         self.assertEqual(result["change_requests"][0]["number"], 7)
         self.assertEqual(result["checks"][0]["conclusion"], "success")
         self.assertEqual(result["workflow_runs"][0]["conclusion"], "success")
+        self.assertEqual(result["artifacts"][0]["id"], 55)
+        self.assertEqual(
+            result["artifacts"][0]["name"],
+            "father-devsecops-abc123",
+        )
 
     def test_missing_head_sha_fails_closed(self) -> None:
         adapter = GitHubAdapter(token="not-used")
