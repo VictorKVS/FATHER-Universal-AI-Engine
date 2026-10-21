@@ -210,6 +210,41 @@ class ProviderBindingStore:
         new_etag = self.write(project, state, current_etag)
         return state, new_etag, historical_entry
 
+    def record_switch_health(
+        self,
+        project: dict[str, Any],
+        *,
+        action_id: str,
+        status: str,
+        blockers: list[str],
+        evidence_id: str,
+        rollback_recommended: bool,
+        expected_etag: str,
+    ) -> tuple[dict[str, Any], str]:
+        state, current_etag = self.read(project)
+        if current_etag != expected_etag:
+            raise BindingConflictError("Provider bindings changed")
+
+        last_switch = dict(state.get("last_switch") or {})
+        if not last_switch:
+            raise ValueError("last switch is not recorded")
+
+        recorded_at = datetime.now(timezone.utc).isoformat()
+        state["last_switch_health"] = {
+            "action_id": action_id.strip(),
+            "status": status.strip().upper(),
+            "blockers": list(blockers),
+            "evidence_id": evidence_id.strip(),
+            "rollback_recommended": bool(rollback_recommended),
+            "recorded_at": recorded_at,
+            "from_provider": last_switch.get("from_provider"),
+            "to_provider": last_switch.get("to_provider"),
+            "switched_at": last_switch.get("switched_at"),
+        }
+        state["schema_version"] = "father.dev_platform.bindings.v0.3"
+        new_etag = self.write(project, state, current_etag)
+        return state, new_etag
+
     def upsert_target(
         self,
         project: dict[str, Any],
