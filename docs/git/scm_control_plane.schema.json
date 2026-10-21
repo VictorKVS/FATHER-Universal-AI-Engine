@@ -1,0 +1,59 @@
+{
+  "schema_version": "father.scm_control_plane.v0.1",
+  "control_plane_id": "FATHER-SCM-CONTROL-001",
+  "providers": [
+    "GITHUB",
+    "GITLAB",
+    "AZURE_DEVOPS",
+    "BITBUCKET",
+    "FORGEJO",
+    "GITEA"
+  ],
+  "actions": [
+    "SCM.CREATE_BRANCH",
+    "SCM.OPEN_CHANGE_REQUEST",
+    "SCM.UPDATE_CHANGE_REQUEST",
+    "SCM.REQUEST_REVIEW",
+    "SCM.ADD_LABEL",
+    "SCM.ADD_COMMENT",
+    "SCM.CREATE_WORK_ITEM",
+    "SCM.UPDATE_WORK_ITEM",
+    "SCM.TRIGGER_PIPELINE",
+    "SCM.RETRY_JOB",
+    "SCM.CREATE_RELEASE_DRAFT",
+    "SCM.PUBLISH_RELEASE",
+    "SCM.MERGE_CHANGE_REQUEST",
+    "SCM.DELETE_BRANCH"
+  ],
+  "action_statuses": [
+    "DRAFT",
+    "READY",
+    "AWAITING_APPROVAL",
+    "APPROVED",
+    "EXECUTING",
+    "SUCCEEDED",
+    "FAILED",
+    "BLOCKED",
+    "CANCELLED",
+    "ROLLED_BACK"
+  ],
+  "permission_rule": "PROVIDER_PERMISSION && FATHER_AUTHORITY && PROJECT_GATE_POLICY",
+  "high_impact_actions": [
+    "SCM.MERGE_CHANGE_REQUEST",
+    "SCM.DELETE_BRANCH",
+    "SCM.PUBLISH_RELEASE",
+    "SCM.PROTECT_BRANCH_CHANGE",
+    "SCM.PERMISSION_CHANGE",
+    "SCM.SECRET_CHANGE",
+    "DEPLOY.PRODUCTION",
+    "DEPLOY.ROLLBACK"
+  ],
+  "security_rules": {
+    "credentials_server_side_only": true,
+    "least_privilege": true,
+    "immutable_audit": true,
+    "post_write_reconciliation": true,
+    "browser_secrets_forbidden": true,
+    "success_requires_verified_provider_state": true
+  }
+}
