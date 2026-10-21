@@ -1707,6 +1707,23 @@ def rollback_primary_provider(
         post_status = "DEGRADED"
         payload["status"] = "ROLLED_BACK_EVIDENCE_DEGRADED"
         payload["post_rollback_status"] = "DEGRADED"
+        EVIDENCE_STORE.append_manufacturing_event(
+            project_id=project_id,
+            event_type="ROLLBACK_HEALTH_STATE_PERSIST_FAILED",
+            source_ref=action_id,
+            payload={
+                "action_id": action_id,
+                "restored_provider": target_provider,
+                "binding_etag": new_etag,
+            },
+        )
+
+    final_rollback_audit = {
+        **payload,
+        "rollback_health_persisted": rollback_health_persisted,
+        "binding_etag": new_etag,
+    }
+    write_audit_event(final_rollback_audit)
 
     return {
         "status": payload["status"],
