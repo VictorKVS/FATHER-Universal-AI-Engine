@@ -126,3 +126,23 @@ Current audited/reconciled writes for both providers:
 - `SCM.OPEN_CHANGE_REQUEST`
 
 FATHER currently opens a normal PR for Gitea/Forgejo; draft mode is not advertised until its exact provider contract is enabled and tested.
+
+
+## Bitbucket Cloud connection
+
+```powershell
+$env:FATHER_BITBUCKET_TOKEN = "<minimum-scope API/OAuth token>"
+```
+
+Optional API override:
+
+```powershell
+$env:FATHER_BITBUCKET_URL = "https://api.bitbucket.org/2.0"
+```
+
+Current audited/reconciled actions:
+
+- `SCM.CREATE_BRANCH`
+- `SCM.OPEN_CHANGE_REQUEST`
+
+Bitbucket draft pull requests are preserved by the canonical FATHER change-request action.
