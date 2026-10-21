@@ -14,7 +14,9 @@ let model={
   traceability:{},
   devsecopsStates:{},
   evidencePacks:{},
-  migrationPlans:{}
+  providerBindings:{},
+  migrationPlans:{},
+  migrationVerifications:{}
 };
 let selectedProject=null;
 let selectedStage=null;
@@ -100,11 +102,16 @@ async function loadRuntimeHistory(project){
     ["/api/projects/"+projectId+"/evidence-packs"],
     {packs:[]}
   );
+  const bindings=await readFirst(
+    ["/api/projects/"+projectId+"/dev-platform/bindings"],
+    {status:"BLOCKED",bindings:null,etag:null}
+  );
   model.evidenceStates[project.project_id]=evidence.evidence||[];
   model.manufacturingEvents[project.project_id]=events.events||[];
   model.traceability[project.project_id]=traceability;
   model.devsecopsStates[project.project_id]=devsecops?.devsecops||null;
   model.evidencePacks[project.project_id]=packs.packs||[];
+  model.providerBindings[project.project_id]=bindings;
 }
 
 async function loadLiveState(project){
@@ -1383,6 +1390,63 @@ function renderScmActions(project,state,branch){
   });
 }
 
+async function bindMigrationTarget(
+  projectId,
+  targetProvider,
+  repository,
+  branch,
+  expectedEtag
+){
+  try{
+    const response=await fetch("/api/migrations/bind",{
+      method:"POST",
+      headers:{
+        "Content-Type":"application/json",
+        "X-FATHER-Action":"confirm"
+      },
+      body:JSON.stringify({
+        project_id:projectId,
+        target_provider:targetProvider,
+        repository,
+        branch,
+        expected_etag:expectedEtag,
+        confirm:true
+      })
+    });
+    const body=await response.json().catch(()=>({}));
+    return{http_status:response.status,...body};
+  }catch(_error){
+    return{
+      status:"BLOCKED",
+      errors:["CONTROL_PLANE_API_UNAVAILABLE"]
+    };
+  }
+}
+
+async function verifyMigrationTarget(projectId,targetProvider){
+  try{
+    const response=await fetch("/api/migrations/verify",{
+      method:"POST",
+      headers:{
+        "Content-Type":"application/json",
+        "X-FATHER-Action":"confirm"
+      },
+      body:JSON.stringify({
+        project_id:projectId,
+        target_provider:targetProvider,
+        confirm:true
+      })
+    });
+    const body=await response.json().catch(()=>({}));
+    return{http_status:response.status,...body};
+  }catch(_error){
+    return{
+      status:"BLOCKED",
+      errors:["CONTROL_PLANE_API_UNAVAILABLE"]
+    };
+  }
+}
+
 async function planMigration(projectId,targetProvider){
   try{
     const response=await fetch("/api/migrations/plan",{
@@ -1571,29 +1635,52 @@ function renderProviderMatrix(){
   const dev=project.dev_platform||{};
   const primary=dev.primary_provider||"github";
   const targets=new Set(dev.migration_targets||[]);
+  const bindingEnvelope=model.providerBindings[project.project_id]||{};
+  const bindings=bindingEnvelope.bindings||{};
+  const targetBindings=bindings.targets||[];
   const host=byId("providerMatrix");
 
   host.innerHTML=(model.providers.providers||[]).map((provider)=>{
     const runtime=providerRuntimeById(provider.id);
+    const binding=targetBindings.find((item)=>item.provider===provider.id);
     const role=provider.id===primary
       ?"PRIMARY"
       :(targets.has(provider.id)?"MIGRATION TARGET":"AVAILABLE");
     const writes=(provider.write_capabilities||[]).map((cap)=>
       '<span>'+esc(cap.replace("SCM.",""))+'</span>'
     ).join("");
-    const canPlan=provider.id!==primary && targets.has(provider.id);
+    const canTarget=provider.id!==primary && targets.has(provider.id);
+    const verification=model.migrationVerifications[provider.id];
+    const bindingText=binding
+      ?binding.repository+" · "+binding.branch
+      :"not bound";
     return '<div class="providerCard '+(provider.id===primary?"primary":"")+'">'+
       '<div class="providerCardHead"><h4>'+esc(provider.name)+'</h4>'+
       '<span class="pill '+(runtime?.adapter_loaded?"PASS":"DRAFT")+'">'+
       esc(provider.adapter_status||"TBD")+'</span></div>'+
-      '<small>credential: '+esc(runtime?.credential_configured?"CONFIGURED":"NOT CONFIGURED / NOT REQUIRED FOR PUBLIC READ")+'</small>'+
+      '<small>credential: '+esc(runtime?.credential_configured?"CONFIGURED":"NOT CONFIGURED / PUBLIC READ ONLY")+'</small>'+
+      '<small>binding: '+esc(bindingText)+'</small>'+
       '<div class="providerCaps">'+
         (provider.capabilities||[]).slice(0,4).map((cap)=>'<span>'+esc(cap)+'</span>').join("")+
         writes+
       '</div>'+
       '<div class="providerRole">'+role+'</div>'+
-      (canPlan
-        ?'<button class="providerAction" data-provider="'+esc(provider.id)+'">Plan migration</button>'
+      (verification
+        ?'<div class="providerVerifyState '+(verification.status==="PASS"?"pass":"blocked")+'">'+
+          esc(verification.status)+
+          (verification.verification?.blockers?.length
+            ?" · "+esc(verification.verification.blockers.join(", "))
+            :" · HEAD parity proven")+
+          '</div>'
+        :'')+
+      (canTarget
+        ?'<div class="providerActionRow">'+
+          '<button class="providerAction" data-provider="'+esc(provider.id)+'">Plan</button>'+
+          '<button class="providerBindAction" data-provider="'+esc(provider.id)+'">'+
+            (binding?"Edit binding":"Bind target")+
+          '</button>'+
+          '<button class="providerVerifyAction" data-provider="'+esc(provider.id)+'" '+(binding?"":"disabled")+'>Verify parity</button>'+
+          '</div>'
         :'')+
       '</div>';
   }).join("");
@@ -1613,6 +1700,95 @@ function renderProviderMatrix(){
       result.className="actionResult "+(plan.state==="READY"?"ok":"block");
       await loadRuntimeHistory(project);
       renderInspector(stageState(project.project_id));
+      renderProviderMatrix();
+    };
+  });
+
+  host.querySelectorAll(".providerBindAction").forEach((button)=>{
+    button.onclick=async()=>{
+      const target=button.dataset.provider;
+      const provider=providerById(target);
+      const current=(model.providerBindings[project.project_id]?.bindings?.targets||[])
+        .find((item)=>item.provider===target);
+      const repository=window.prompt(
+        (provider?.repository_binding_format||"Target repository binding"),
+        current?.repository||""
+      );
+      if(!repository)return;
+      const targetBranch=window.prompt(
+        "Target branch",
+        current?.branch||project.branch||"main"
+      );
+      if(!targetBranch)return;
+      const envelope=model.providerBindings[project.project_id]||{};
+      if(!envelope.etag){
+        window.alert("Binding ETag unavailable. Refresh FATHER.");
+        return;
+      }
+      const confirmed=window.confirm(
+        "Bind "+target+" → "+repository+" / "+targetBranch+
+        "? This changes tracked project configuration and requires a Git commit."
+      );
+      if(!confirmed)return;
+
+      const output=byId("actionResult");
+      output.textContent="Binding migration target "+target+"…";
+      output.className="actionResult";
+      const bound=await bindMigrationTarget(
+        project.project_id,
+        target,
+        repository,
+        targetBranch,
+        envelope.etag
+      );
+      if(bound.status!=="APPLIED"){
+        output.textContent=
+          (bound.status||"BLOCKED")+" · "+
+          (bound.errors||["UNKNOWN_ERROR"]).join(", ");
+        output.className="actionResult block";
+        return;
+      }
+      await loadRuntimeHistory(project);
+      output.textContent=
+        "BOUND · "+target+" · ETag "+bound.etag.slice(0,12)+
+        " · tracked config changed · Git commit required";
+      output.className="actionResult ok";
+      renderProviderMatrix();
+    };
+  });
+
+  host.querySelectorAll(".providerVerifyAction:not(:disabled)").forEach((button)=>{
+    button.onclick=async()=>{
+      const target=button.dataset.provider;
+      const confirmed=window.confirm(
+        "Read source and "+target+
+        " now and verify branch HEAD parity? Evidence will be stored."
+      );
+      if(!confirmed)return;
+      const output=byId("actionResult");
+      output.textContent="Verifying migration parity with "+target+"…";
+      output.className="actionResult";
+      const verified=await verifyMigrationTarget(
+        project.project_id,
+        target
+      );
+      model.migrationVerifications[target]=verified;
+      if(verified.status==="PASS"){
+        output.textContent=
+          verified.verification.verification_id+
+          " · PASS · HEAD "+
+          verified.verification.source_head_sha+
+          " · switch-primary eligible by parity evidence";
+        output.className="actionResult ok";
+      }else{
+        output.textContent=
+          (verified.verification?.verification_id||"VERIFY")+
+          " · "+(verified.status||"BLOCKED")+" · "+
+          (verified.verification?.blockers||verified.errors||["UNKNOWN_ERROR"]).join(", ");
+        output.className="actionResult block";
+      }
+      await loadRuntimeHistory(project);
+      renderProviderMatrix();
     };
   });
 }
@@ -1625,7 +1801,9 @@ byId("refresh").onclick=async()=>{
   model.traceability={};
   model.devsecopsStates={};
   model.evidencePacks={};
+  model.providerBindings={};
   model.migrationPlans={};
+  model.migrationVerifications={};
   await load();
 };
 load();

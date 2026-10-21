@@ -70,3 +70,12 @@ main{padding:27px 32px 60px;overflow:hidden}.top,.hero,.sectionTitle,.panelHead{
 .recordRow small{display:block;color:var(--muted);font-size:7px;margin-top:3px;white-space:normal}
 .legacyRecords{margin-top:14px;border-top:1px solid #22384766;padding-top:10px;color:var(--muted);font-size:8px}
 .legacyRecords>div{padding:4px 0}
+
+.providerActionRow{display:flex;flex-wrap:wrap;gap:5px;margin-top:9px}
+.providerActionRow button{flex:1 1 auto}
+.providerBindAction,.providerVerifyAction{border:1px solid #2b4657;background:#0b1b25;color:#dceaf2;border-radius:6px;padding:6px;font-size:7px;cursor:pointer}
+.providerBindAction:hover,.providerVerifyAction:hover{border-color:#56d9ff66}
+.providerVerifyAction:disabled{opacity:.38;cursor:not-allowed}
+.providerVerifyState{margin-top:8px;padding:5px 6px;border:1px solid #223847;border-radius:6px;font-size:7px}
+.providerVerifyState.pass{border-color:#44d17a55;color:#8ff0ad}
+.providerVerifyState.blocked{border-color:#ff5e6c55;color:#ff98a2}
