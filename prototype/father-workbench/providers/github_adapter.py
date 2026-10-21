@@ -9,6 +9,7 @@ from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
+import re
 
 GITHUB_API = "https://api.github.com"
 
@@ -19,10 +20,29 @@ class ProviderError(RuntimeError):
 
 class GitHubAdapter:
     provider_id = "github"
+    _branch_pattern = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$")
 
     def __init__(self, token: str | None = None, timeout: float = 8.0) -> None:
         self._token = token if token is not None else os.getenv("FATHER_GITHUB_TOKEN")
         self._timeout = timeout
+
+    @property
+    def can_write(self) -> bool:
+        return bool(self._token)
+
+    @classmethod
+    def validate_branch_name(cls, value: str) -> str:
+        branch = value.strip()
+        forbidden_fragments = ("..", "//", "@{", "\\")
+        forbidden_chars = set(" ~^:?*[]")
+        if (
+            not cls._branch_pattern.fullmatch(branch)
+            or any(fragment in branch for fragment in forbidden_fragments)
+            or any(char in branch for char in forbidden_chars)
+            or branch.endswith(("/", ".", ".lock"))
+        ):
+            raise ValueError("Invalid branch name")
+        return branch
 
     @staticmethod
     def split_repository(repository: str) -> tuple[str, str]:
@@ -54,6 +74,82 @@ class GitHubAdapter:
             raise ProviderError(f"GitHub network error: {exc.reason}") from None
         except (UnicodeDecodeError, json.JSONDecodeError):
             raise ProviderError("GitHub returned invalid JSON") from None
+
+    def _mutate(self, method: str, path: str, payload: dict[str, Any]) -> Any:
+        if not self._token:
+            raise ProviderError("GitHub write credential unavailable")
+
+        body = json.dumps(payload).encode("utf-8")
+        headers = {
+            "Accept": "application/vnd.github+json",
+            "Content-Type": "application/json",
+            "User-Agent": "FATHER-Control-Plane/0.1",
+            "X-GitHub-Api-Version": "2022-11-28",
+            "Authorization": f"Bearer {self._token}",
+        }
+        request = Request(
+            GITHUB_API + path,
+            data=body,
+            headers=headers,
+            method=method,
+        )
+        try:
+            with urlopen(request, timeout=self._timeout) as response:
+                raw = response.read()
+                return json.loads(raw.decode("utf-8")) if raw else {}
+        except HTTPError as exc:
+            raise ProviderError(f"GitHub HTTP {exc.code}") from None
+        except URLError as exc:
+            raise ProviderError(f"GitHub network error: {exc.reason}") from None
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            raise ProviderError("GitHub returned invalid JSON") from None
+
+    def create_branch(
+        self,
+        repository: str,
+        branch_name: str,
+        base_ref: str,
+    ) -> dict[str, Any]:
+        branch_name = self.validate_branch_name(branch_name)
+        base_ref = self.validate_branch_name(base_ref)
+        owner, name = self.split_repository(repository)
+        repo_path = f"/repos/{quote(owner, safe='')}/{quote(name, safe='')}"
+
+        base = self._request(
+            f"{repo_path}/git/ref/heads/{quote(base_ref, safe='')}"
+        )
+        base_sha = (base.get("object") or {}).get("sha")
+        if not base_sha:
+            raise ProviderError("GitHub base ref has no SHA")
+
+        created = self._mutate(
+            "POST",
+            f"{repo_path}/git/refs",
+            {
+                "ref": f"refs/heads/{branch_name}",
+                "sha": base_sha,
+            },
+        )
+        created_ref = created.get("ref")
+        created_sha = (created.get("object") or {}).get("sha")
+
+        reconciled = self._request(
+            f"{repo_path}/branches/{quote(branch_name, safe='')}"
+        )
+        reconciled_sha = (reconciled.get("commit") or {}).get("sha")
+        if reconciled_sha != base_sha:
+            raise ProviderError("GitHub branch reconciliation mismatch")
+
+        return {
+            "provider": self.provider_id,
+            "repository": repository,
+            "branch": branch_name,
+            "base_ref": base_ref,
+            "head_sha": reconciled_sha,
+            "created_ref": created_ref,
+            "provider_created_sha": created_sha,
+            "reconciled": True,
+        }
 
     @staticmethod
     def _compact_user(value: dict[str, Any] | None) -> dict[str, Any] | None:
