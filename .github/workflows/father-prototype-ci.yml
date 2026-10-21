@@ -50,6 +50,11 @@ jobs:
           python -m py_compile prototype/father-workbench/gate_engine.py
           python -m py_compile prototype/father-workbench/state_store.py
           python -m py_compile prototype/father-workbench/lifecycle_engine.py
+          python -m py_compile prototype/father-workbench/artifact_engine.py
+          python -m py_compile prototype/father-workbench/traceability_engine.py
+          python -m py_compile prototype/father-workbench/devsecops_state.py
+          python -m py_compile prototype/father-workbench/evidence_pack.py
+          python -m py_compile prototype/father-workbench/document_store.py
           python -m py_compile scripts/check_secret_hygiene.py
           python -m py_compile scripts/father_devsecops_baseline.py
 
