@@ -1,0 +1,71 @@
+{
+  "schema_version": "father.git_workspace.v0.1",
+  "workspace_id": "FATHER-GIT-WORKSPACE-001",
+  "entities": [
+    "Repository",
+    "Branch",
+    "Commit",
+    "PullRequest",
+    "Review",
+    "CheckRun",
+    "EvidenceSnapshot",
+    "MergeGate",
+    "ReleaseRef"
+  ],
+  "branch_states": [
+    "SYNCED",
+    "AHEAD",
+    "BEHIND",
+    "DIVERGED",
+    "STALE",
+    "BLOCKED",
+    "READY_FOR_REVIEW",
+    "READY_FOR_MERGE",
+    "MERGED",
+    "CLOSED"
+  ],
+  "check_states": [
+    "NOT_APPLICABLE",
+    "NOT_RUN",
+    "RUNNING",
+    "PASS",
+    "FAIL",
+    "BLOCKED",
+    "WAIVED_WITH_APPROVAL"
+  ],
+  "project_binding_fields": [
+    "project_id",
+    "primary_repository",
+    "primary_branch",
+    "supporting_branches",
+    "external_repo_refs",
+    "approved_commit",
+    "release_ref"
+  ],
+  "branch_fields": [
+    "repository",
+    "branch",
+    "base_branch",
+    "project_id",
+    "stage_id",
+    "owner",
+    "head_sha",
+    "ahead_by",
+    "behind_by",
+    "relation_to_base",
+    "pull_request",
+    "review_state",
+    "ci_state",
+    "security_state",
+    "devsecops_state",
+    "merge_readiness",
+    "last_activity"
+  ],
+  "rules": {
+    "active_branch_requires_project_or_purpose": true,
+    "approved_state_requires_exact_commit": true,
+    "evidence_must_match_commit": true,
+    "missing_check_is_not_pass": true,
+    "green_status_does_not_auto_merge": true
+  }
+}
