@@ -52,6 +52,8 @@ jobs:
           python -m py_compile prototype/father-workbench/providers/bitbucket_adapter.py
           python -m py_compile prototype/father-workbench/providers/azure_devops_adapter.py
           python -m py_compile prototype/father-workbench/migration_engine.py
+          python -m py_compile prototype/father-workbench/migration_verifier.py
+          python -m py_compile prototype/father-workbench/provider_binding_store.py
           python -m py_compile prototype/father-workbench/gate_engine.py
           python -m py_compile prototype/father-workbench/state_store.py
           python -m py_compile prototype/father-workbench/lifecycle_engine.py
