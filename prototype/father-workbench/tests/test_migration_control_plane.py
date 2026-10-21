@@ -42,8 +42,7 @@ class MigrationControlPlaneTests(unittest.TestCase):
     def test_binding_and_parity_pass_create_evidence(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             binding_store = ProviderBindingStore(Path(tmp))
-            initial, etag = binding_store.read(self.project)
-            del initial
+            _initial, etag = binding_store.read(self.project)
 
             events = []
             evidence = []
@@ -67,15 +66,29 @@ class MigrationControlPlaneTests(unittest.TestCase):
                     return item
 
             class FakeAdapter:
+                def __init__(self, provider, repository):
+                    self.provider = provider
+                    self.repository = repository
+
                 def split_repository(self, repository):
                     return tuple(repository.split("/"))
 
                 def validate_branch_name(self, branch):
                     return branch
 
+                def live_state(self, repository, branch):
+                    return {
+                        "provider": self.provider,
+                        "repository": {"full_name": repository},
+                        "branch": {
+                            "name": branch,
+                            "head_sha": "abc123",
+                        },
+                    }
+
                 def ref_inventory(self, repository):
                     return {
-                        "provider": "mock",
+                        "provider": self.provider,
                         "repository": repository,
                         "default_branch": "main",
                         "branches": {"main": "abc123"},
@@ -84,6 +97,14 @@ class MigrationControlPlaneTests(unittest.TestCase):
                         "limitations": [],
                     }
 
+            def adapter_for(provider):
+                repository = (
+                    "owner/repo"
+                    if provider == "github"
+                    else "group/repo"
+                )
+                return FakeAdapter(provider, repository)
+
             with (
                 patch.object(server, "project_by_id", return_value=self.project),
                 patch.object(
@@ -91,7 +112,11 @@ class MigrationControlPlaneTests(unittest.TestCase):
                     "provider_config_by_id",
                     return_value={"id": "gitlab"},
                 ),
-                patch.object(server, "provider_adapter", return_value=FakeAdapter()),
+                patch.object(
+                    server,
+                    "provider_adapter",
+                    side_effect=adapter_for,
+                ),
                 patch.object(server, "PROVIDER_BINDING_STORE", binding_store),
                 patch.object(server, "EVIDENCE_STORE", FakeEvidence()),
             ):
@@ -104,32 +129,10 @@ class MigrationControlPlaneTests(unittest.TestCase):
                 )
                 self.assertEqual(bound["status"], "APPLIED")
 
-                source = {
-                    "provider": "github",
-                    "repository": {"full_name": "owner/repo"},
-                    "branch": {"name": "main", "head_sha": "abc123"},
-                }
-                target = {
-                    "provider": "gitlab",
-                    "repository": {"full_name": "group/repo"},
-                    "branch": {"name": "main", "head_sha": "abc123"},
-                }
-                with (
-                    patch.object(
-                        server,
-                        "live_provider_state",
-                        return_value=source,
-                    ),
-                    patch.object(
-                        server,
-                        "live_binding_state",
-                        return_value=target,
-                    ),
-                ):
-                    verified = server.verify_migration_target(
-                        "P-1",
-                        "gitlab",
-                    )
+                verified = server.verify_migration_target(
+                    "P-1",
+                    "gitlab",
+                )
 
             self.assertEqual(verified["status"], "PASS")
             self.assertTrue(verified["branch_parity_proven"])
@@ -139,18 +142,17 @@ class MigrationControlPlaneTests(unittest.TestCase):
                 "MIGRATION_SECURITY_REVIEW_REQUIRED",
                 verified["switch_primary_blockers"],
             )
-            self.assertEqual(
-                verified["verification"]["checks"]["head_sha_parity"],
-                True,
+            self.assertTrue(
+                verified["verification"]["checks"]["head_sha_parity"]
             )
-            self.assertEqual(len(evidence), 1)
+            self.assertEqual(len(evidence), 2)
             self.assertEqual(
-                evidence[0]["evidence_type"],
-                "MIGRATION_VERIFICATION",
+                {item["evidence_type"] for item in evidence},
+                {"MIGRATION_VERIFICATION", "REF_PARITY_REPORT"},
             )
             self.assertTrue(
                 any(
-                    event["event_type"] == "MIGRATION_VERIFICATION_PASSED"
+                    event["event_type"] == "MIGRATION_REF_PARITY_PASSED"
                     for event in events
                 )
             )
@@ -178,27 +180,38 @@ class MigrationControlPlaneTests(unittest.TestCase):
                         **kwargs,
                     }
 
+            class FakeAdapter:
+                def __init__(self, provider):
+                    self.provider = provider
+
+                def live_state(self, repository, branch):
+                    sha = "abc" if self.provider == "github" else "def"
+                    return {
+                        "provider": self.provider,
+                        "repository": {"full_name": repository},
+                        "branch": {"name": branch, "head_sha": sha},
+                    }
+
+                def ref_inventory(self, repository):
+                    sha = "abc" if self.provider == "github" else "def"
+                    return {
+                        "provider": self.provider,
+                        "repository": repository,
+                        "default_branch": "main",
+                        "branches": {"main": sha},
+                        "tags": {},
+                        "complete": True,
+                        "limitations": [],
+                    }
+
             with (
                 patch.object(server, "project_by_id", return_value=self.project),
                 patch.object(server, "PROVIDER_BINDING_STORE", binding_store),
                 patch.object(server, "EVIDENCE_STORE", FakeEvidence()),
                 patch.object(
                     server,
-                    "live_provider_state",
-                    return_value={
-                        "provider": "github",
-                        "repository": {"full_name": "owner/repo"},
-                        "branch": {"name": "main", "head_sha": "abc"},
-                    },
-                ),
-                patch.object(
-                    server,
-                    "live_binding_state",
-                    return_value={
-                        "provider": "gitlab",
-                        "repository": {"full_name": "group/repo"},
-                        "branch": {"name": "main", "head_sha": "def"},
-                    },
+                    "provider_adapter",
+                    side_effect=lambda provider: FakeAdapter(provider),
                 ),
             ):
                 result = server.verify_migration_target("P-1", "gitlab")
@@ -209,6 +222,11 @@ class MigrationControlPlaneTests(unittest.TestCase):
                 "HEAD_SHA_MISMATCH",
                 result["verification"]["blockers"],
             )
+            self.assertIn(
+                "BRANCH_SHA_MISMATCH",
+                result["ref_parity"]["blockers"],
+            )
+
 
 
 if __name__ == "__main__":
