@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """FATHER Project Workbench prototype control-plane server.
 
-Zero external dependencies. Serves the UI and a small read/policy API.
-It never stores provider credentials and never mutates an external SCM provider.
+Zero external dependencies. Serves the UI and a policy-gated control API.
+Provider credentials remain server-side; supported mutations are explicit,
+audited and reconciled.
 """
 
 from __future__ import annotations
@@ -19,7 +20,13 @@ from typing import Any
 from urllib.parse import unquote, urlparse
 
 from evidence_store import EvidenceStore
+from gate_engine import (
+    apply_gate_decision,
+    evaluate_stage_gate,
+    validate_gate_decision,
+)
 from migration_engine import build_migration_plan
+from state_store import ProjectStateStore, StateConflictError
 from providers.base import ProviderError
 from providers.github_adapter import GitHubAdapter
 from providers.gitlab_adapter import GitLabAdapter
@@ -32,9 +39,11 @@ REPO_ROOT = APP_DIR.parents[1]
 PROJECTS_FILE = REPO_ROOT / "projects" / "registry.json"
 PROVIDERS_FILE = REPO_ROOT / "config" / "dev_platform" / "providers.json"
 GIT_SNAPSHOT_FILE = REPO_ROOT / "docs" / "git" / "current_workspace.snapshot.json"
+GATE_POLICIES_FILE = REPO_ROOT / "config" / "gates" / "stage_gate_policies.json"
 RUNTIME_DIR = APP_DIR / "runtime"
 AUDIT_FILE = RUNTIME_DIR / "scm-actions.jsonl"
 EVIDENCE_STORE = EvidenceStore(RUNTIME_DIR)
+PROJECT_STATE_STORE = ProjectStateStore(REPO_ROOT)
 
 MAX_JSON_BODY = 16 * 1024
 
@@ -147,14 +156,7 @@ def branch_state(project: dict[str, Any]) -> dict[str, Any] | None:
 
 
 def project_stage_state(project: dict[str, Any]) -> dict[str, Any]:
-    reference = project.get("stage_state_ref")
-    if not reference:
-        raise FileNotFoundError("Project has no stage_state_ref")
-    path = (REPO_ROOT / str(reference)).resolve()
-    path.relative_to(REPO_ROOT)
-    state = read_json(path)
-    if state.get("project_id") != project.get("project_id"):
-        raise ValueError("Stage state project_id mismatch")
+    state, _etag = PROJECT_STATE_STORE.read(project)
     return state
 
 
@@ -251,6 +253,129 @@ def capture_live_provider_evidence(
             },
         )
     return evidence
+
+
+def recalculate_gate(
+    project_id: str,
+    stage_id: str,
+) -> dict[str, Any]:
+    project = project_by_id(project_id)
+    if not project:
+        return {
+            "valid": False,
+            "errors": ["PROJECT_NOT_FOUND"],
+        }
+    state, _etag = PROJECT_STATE_STORE.read(project)
+    return evaluate_stage_gate(
+        state,
+        stage_id,
+        read_json(GATE_POLICIES_FILE),
+    )
+
+
+def decide_gate(
+    project_id: str,
+    stage_id: str,
+    decision: str,
+    rationale: str,
+    evidence_refs: list[str],
+    decided_by: str,
+    expected_etag: str,
+) -> dict[str, Any]:
+    project = project_by_id(project_id)
+    if not project:
+        return {
+            "status": "BLOCKED",
+            "errors": ["PROJECT_NOT_FOUND"],
+        }
+
+    state, current_etag = PROJECT_STATE_STORE.read(project)
+    if current_etag != expected_etag:
+        return {
+            "status": "CONFLICT",
+            "errors": ["STATE_ETAG_CONFLICT"],
+            "current_etag": current_etag,
+        }
+
+    policies = read_json(GATE_POLICIES_FILE)
+    validation = validate_gate_decision(
+        state,
+        stage_id,
+        decision,
+        rationale,
+        evidence_refs,
+        policies,
+    )
+    if not validation["valid"]:
+        return {
+            "status": "BLOCKED",
+            "errors": validation["errors"],
+            "evaluation": validation["evaluation"],
+            "current_etag": current_etag,
+        }
+
+    updated = apply_gate_decision(
+        state,
+        stage_id,
+        decision,
+        rationale,
+        evidence_refs,
+        decided_by,
+        policies,
+    )
+    try:
+        new_etag = PROJECT_STATE_STORE.write(
+            project,
+            updated,
+            current_etag,
+        )
+    except StateConflictError:
+        _state, latest_etag = PROJECT_STATE_STORE.read(project)
+        return {
+            "status": "CONFLICT",
+            "errors": ["STATE_ETAG_CONFLICT"],
+            "current_etag": latest_etag,
+        }
+
+    payload = {
+        "project_id": project_id,
+        "stage_id": stage_id,
+        "decision": decision.upper().strip(),
+        "rationale": rationale.strip(),
+        "evidence_refs": evidence_refs,
+        "decided_by": decided_by.strip() or "HUMAN",
+        "previous_etag": current_etag,
+        "new_etag": new_etag,
+    }
+    event = EVIDENCE_STORE.append_manufacturing_event(
+        project_id=project_id,
+        event_type="GATE_DECISION_APPLIED",
+        source_ref=f"GATE:{stage_id}:{new_etag[:12]}",
+        payload=payload,
+    )
+    evidence = EVIDENCE_STORE.store_evidence(
+        project_id=project_id,
+        evidence_type="GATE_DECISION",
+        provider=None,
+        payload=payload,
+        subject_key=f"{stage_id}:{new_etag}",
+        refs={
+            "manufacturing_event_id": event["event_id"],
+            "input_evidence_refs": evidence_refs,
+        },
+    )
+    return {
+        "status": "APPLIED",
+        "project_id": project_id,
+        "stage_id": stage_id,
+        "decision": decision.upper().strip(),
+        "previous_etag": current_etag,
+        "new_etag": new_etag,
+        "evidence": evidence,
+        "manufacturing_event_id": event["event_id"],
+        "worktree_change": True,
+        "git_commit_required": True,
+    }
 
 
 def write_audit_event(event: dict[str, Any]) -> None:
@@ -627,6 +752,8 @@ class FatherHandler(BaseHTTPRequestHandler):
                         ],
                         "evidence_store": True,
                         "manufacturing_events": True,
+                        "gate_engine": True,
+                        "atomic_project_state": True,
                     }
                 )
                 return
@@ -755,6 +882,8 @@ class FatherHandler(BaseHTTPRequestHandler):
             "/api/actions/plan",
             "/api/actions/execute",
             "/api/migrations/plan",
+            "/api/gates/recalculate",
+            "/api/gates/decide",
         }:
             self._error_json(HTTPStatus.NOT_FOUND, "ENDPOINT_NOT_FOUND")
             return
@@ -783,6 +912,75 @@ class FatherHandler(BaseHTTPRequestHandler):
         project_id = str(body.get("project_id", "")).strip()
         if not project_id:
             self._error_json(HTTPStatus.BAD_REQUEST, "PROJECT_REQUIRED")
+            return
+
+        if path == "/api/gates/recalculate":
+            stage_id = str(body.get("stage_id", "")).strip()
+            if not stage_id:
+                self._error_json(HTTPStatus.BAD_REQUEST, "STAGE_REQUIRED")
+                return
+            result = recalculate_gate(project_id, stage_id)
+            status = (
+                HTTPStatus.NOT_FOUND
+                if "PROJECT_NOT_FOUND" in result.get("errors", [])
+                else HTTPStatus.OK
+            )
+            self._json(result, status)
+            return
+
+        if path == "/api/gates/decide":
+            if self.headers.get("X-FATHER-Action") != "confirm":
+                self._error_json(
+                    HTTPStatus.FORBIDDEN,
+                    "EXPLICIT_ACTION_HEADER_REQUIRED",
+                )
+                return
+            if body.get("confirm") is not True:
+                self._error_json(
+                    HTTPStatus.FORBIDDEN,
+                    "EXPLICIT_CONFIRMATION_REQUIRED",
+                )
+                return
+
+            stage_id = str(body.get("stage_id", "")).strip()
+            decision = str(body.get("decision", "")).strip()
+            rationale = str(body.get("rationale", "")).strip()
+            expected_etag = str(body.get("expected_etag", "")).strip()
+            decided_by = str(body.get("decided_by", "HUMAN")).strip()
+            evidence_refs = body.get("evidence_refs") or []
+
+            if (
+                not stage_id
+                or not decision
+                or not expected_etag
+                or not isinstance(evidence_refs, list)
+            ):
+                self._error_json(
+                    HTTPStatus.BAD_REQUEST,
+                    "INVALID_GATE_DECISION_REQUEST",
+                )
+                return
+            evidence_refs = [
+                str(item).strip()
+                for item in evidence_refs[:50]
+                if str(item).strip()
+            ]
+
+            result = decide_gate(
+                project_id,
+                stage_id,
+                decision,
+                rationale,
+                evidence_refs,
+                decided_by,
+                expected_etag,
+            )
+            if result["status"] == "CONFLICT":
+                self._json(result, HTTPStatus.CONFLICT)
+            elif result["status"] == "BLOCKED":
+                self._json(result, HTTPStatus.BAD_REQUEST)
+            else:
+                self._json(result)
             return
 
         if path == "/api/migrations/plan":
