@@ -1,0 +1,55 @@
+{
+  "schema_version": "FATHER-VOICE/1.0",
+  "providers": [
+    {
+      "id": "silero-local",
+      "kind": "tts",
+      "runtime": "python",
+      "model_family": "silero-v5-ru",
+      "model_path_env": "FATHER_SILERO_MODEL",
+      "api": {
+        "health": "/api/tts/health",
+        "synthesize": "/api/tts/local"
+      },
+      "voices": [
+        {
+          "id": "xenia",
+          "language": "ru-RU",
+          "gender": "female"
+        },
+        {
+          "id": "baya",
+          "language": "ru-RU",
+          "gender": "female"
+        },
+        {
+          "id": "kseniya",
+          "language": "ru-RU",
+          "gender": "female"
+        },
+        {
+          "id": "aidar",
+          "language": "ru-RU",
+          "gender": "male"
+        },
+        {
+          "id": "eugene",
+          "language": "ru-RU",
+          "gender": "male"
+        }
+      ]
+    }
+  ],
+  "characters": [
+    {
+      "id": "alina",
+      "provider": "silero-local",
+      "voice": "xenia"
+    },
+    {
+      "id": "father",
+      "provider": "silero-local",
+      "voice": "eugene"
+    }
+  ]
+}
